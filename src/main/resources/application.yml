@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: telegram-referral-bot
+  
+  datasource:
+    url: jdbc:postgresql://localhost:5432/${DB_NAME}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+telegram:
+  bot:
+    token: ${TELEGRAM_BOT_TOKEN}
+    username: ${TELEGRAM_BOT_USERNAME}
+    # Use "webhook" or "polling"
+    mode: polling
+    
+  adminBot:
+    token: ${TELEGRAM_ADMIN_BOT_TOKEN}
+    username: ${TELEGRAM_ADMIN_BOT_USERNAME}
+    mode: polling
+    
+  webhook:
+    url: ${TELEGRAM_WEBHOOK_URL:https://yourdomain.com}
+    path: /webhook
+    
+  privateChannel:
+    inviteLink: ${PRIVATE_CHANNEL_LINK}
+
+bot:
+  admin:
+    chatIds: ${ADMIN_CHAT_IDS}
+
+server:
+  port: 8080
