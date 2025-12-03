@@ -80,13 +80,11 @@ public class UserService {
      */
     @Transactional
     public boolean processReferral(User newUser, String referralCode) {
-        // Check if user already has an inviter
         if (newUser.getInvitedByUserId() != null) {
             log.warn("User {} already has an inviter", newUser.getChatId());
             return false;
         }
         
-        // Find inviter by referral code
         Optional<User> inviterOpt = userRepository.findByReferralCode(referralCode);
         if (inviterOpt.isEmpty()) {
             log.warn("Inviter not found for referral code: {}", referralCode);
@@ -95,7 +93,6 @@ public class UserService {
         
         User inviter = inviterOpt.get();
         
-        // Can't refer yourself
         if (inviter.getChatId().equals(newUser.getChatId())) {
             log.warn("User {} tried to use their own referral code", newUser.getChatId());
             return false;
@@ -105,11 +102,21 @@ public class UserService {
         newUser.setInvitedByUserId(inviter.getId());
         userRepository.save(newUser);
         
-        // Increment inviter's referral count
+        // Increment inviter's direct referral count
         inviter.setReferralCount(inviter.getReferralCount() + 1);
         userRepository.save(inviter);
         
-        log.info("Referral processed: inviter={} (count={}), newUser={}", 
+        // If inviter was also invited by someone, increment that person's indirect referral count
+        if (inviter.getInvitedByUserId() != null) {
+            userRepository.findById(inviter.getInvitedByUserId()).ifPresent(grandInviter -> {
+                grandInviter.setIndirectReferralCount(grandInviter.getIndirectReferralCount() + 1);
+                userRepository.save(grandInviter);
+                log.info("Indirect referral processed: grandInviter={} (indirect count={})", 
+                    grandInviter.getChatId(), grandInviter.getIndirectReferralCount());
+            });
+        }
+        
+        log.info("Referral processed: inviter={} (direct count={}), newUser={}", 
             inviter.getChatId(), inviter.getReferralCount(), newUser.getChatId());
         
         return true;
@@ -151,5 +158,12 @@ public class UserService {
      */
     public long getTotalUserCount() {
         return userRepository.count();
+    }
+    
+    /**
+     * Get all users invited by a specific user
+     */
+    public List<User> getUsersInvitedBy(Long userId) {
+        return userRepository.findByInvitedByUserId(userId);
     }
 }

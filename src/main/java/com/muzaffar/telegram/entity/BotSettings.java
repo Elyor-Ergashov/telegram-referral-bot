@@ -19,12 +19,12 @@ public class BotSettings {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    
-    @Column(nullable = false, unique = true)
-    private String settingKey;
-    
+
     @Column(nullable = false)
-    private String settingValue;
+    private int requiredReferralCount;
+
+    @Column(nullable = false)
+    private String privateChannelLink;
     
     private String description;
     

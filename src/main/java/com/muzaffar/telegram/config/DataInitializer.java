@@ -16,7 +16,7 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     public void run(String... args) {
         log.info("Initializing bot settings...");
-        settingsService.initializeDefaultSettings();
+//        settingsService.initializeDefaultSettings();
         log.info("Bot settings initialized successfully");
     }
 }

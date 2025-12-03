@@ -50,7 +50,6 @@ public class ChannelService {
      */
     @Transactional
     public Channel addChannel(String channelId, String channelName, String channelUsername) {
-        // Check if channel already exists
         if (channelRepository.existsByChannelId(channelId)) {
             throw new IllegalArgumentException("Channel already exists with ID: " + channelId);
         }

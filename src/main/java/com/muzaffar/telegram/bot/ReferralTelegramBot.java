@@ -11,6 +11,7 @@ import com.muzaffar.telegram.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
+import org.telegram.telegrambots.meta.api.methods.AnswerInlineQuery;
 import org.telegram.telegrambots.meta.api.methods.groupadministration.GetChatMember;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
@@ -20,8 +21,12 @@ import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.chatmember.ChatMember;
 import org.telegram.telegrambots.meta.api.objects.chatmember.ChatMemberLeft;
+import org.telegram.telegrambots.meta.api.objects.inlinequery.InlineQuery;
+import org.telegram.telegrambots.meta.api.objects.inlinequery.inputmessagecontent.InputTextMessageContent;
+import org.telegram.telegrambots.meta.api.objects.inlinequery.result.InlineQueryResultArticle;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +44,9 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
     
     // Store referral codes temporarily for users who need to verify channels first
     private final Map<Long, String> pendingReferrals = new HashMap<>();
+    
+    // Store users who have seen the introduction message
+    private final Map<Long, Boolean> hasSeenIntro = new HashMap<>();
     
     public ReferralTelegramBot(BotConfig botConfig, AppConfig appConfig, 
                       UserService userService, MessageService messageService,
@@ -81,6 +89,8 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
                 }
             } else if (update.hasCallbackQuery()) {
                 handleCallbackQuery(update.getCallbackQuery());
+            } else if (update.hasInlineQuery()) {
+                handleInlineQuery(update.getInlineQuery());
             }
         } catch (Exception e) {
             log.error("Error processing update", e);
@@ -109,6 +119,25 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
         // Get or create user
         User user = userService.getOrCreateUser(chatId, username, firstName, lastName);
         
+        // Check if user has seen introduction message
+        if (!hasSeenIntro.getOrDefault(chatId, false)) {
+            // Store referral code for later processing
+            if (referralCode != null && !referralCode.isEmpty()) {
+                pendingReferrals.put(chatId, referralCode);
+                log.info("Stored referral code for user {} to process after intro", chatId);
+            }
+            
+            // Show introduction message with START button
+            try {
+                SendMessage introMessage = messageService.createIntroductionMessage(chatId);
+                execute(introMessage);
+                hasSeenIntro.put(chatId, true);
+                return;
+            } catch (TelegramApiException e) {
+                log.error("Error sending introduction message", e);
+            }
+        }
+        
         // Check if user has verified channels
         if (!user.getHasVerifiedChannels()) {
             // Store referral code for later processing (after channel verification)
@@ -134,43 +163,34 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
             }
         }
         
-        // Check if this is a new user with a referral code
+        // Check if this is a new user with a referral code and process it
         if (referralCode != null && !referralCode.isEmpty() && user.getInvitedByUserId() == null) {
             boolean success = userService.processReferral(user, referralCode);
             
             if (success) {
-                // Notify new user
-                String joinMessage = messageService.createJoinedViaReferralMessage(
-                    getBotUsername(), 
-                    user.getReferralCode(),
-                    settingsService.getRequiredReferralCount()
-                );
-                sendMessage(chatId, joinMessage);
-                
-                // Notify inviter
+                // Notify inviter with info about who joined
                 userService.findByReferralCode(referralCode).ifPresent(inviter -> {
-                    String successMessage = messageService.createReferralSuccessMessage(
-                        inviter.getReferralCount(),
-                        settingsService.getRequiredReferralCount()
-                    );
-                    sendMessage(inviter.getChatId(), successMessage);
-                    
-                    // Check if inviter should receive private channel link
-                    checkAndSendPrivateChannelLink(inviter);
+                    try {
+                        SendMessage successMessage = messageService.createReferralSuccessMessage(
+                            inviter.getChatId(),
+                            inviter.getReferralCount(),
+                            settingsService.getRequiredReferralCount(),
+                            firstName,
+                            chatId
+                        );
+                        execute(successMessage);
+                        
+                        // Check if inviter should receive private channel link
+                        checkAndSendPrivateChannelLink(inviter);
+                    } catch (TelegramApiException e) {
+                        log.error("Error sending referral success message", e);
+                    }
                 });
-                
-                return;
             }
         }
         
-        // Send welcome message
-        String welcomeMessage = messageService.createWelcomeMessage(
-            getBotUsername(),
-            user.getReferralCode(),
-            user.getReferralCount(),
-            settingsService.getRequiredReferralCount()
-        );
-        sendMessage(chatId, welcomeMessage);
+        // Send welcome messages in sequence (same for referral and direct users)
+        sendWelcomeSequence(chatId, firstName);
     }
     
     /**
@@ -262,9 +282,200 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
         
         log.info("Received callback query from chatId={}: {}", chatId, data);
         
-        if ("verify_channels".equals(data)) {
+        if ("start_bot".equals(data)) {
+            handleStartButton(chatId, messageId, callbackQuery.getFrom().getUserName(),
+                callbackQuery.getFrom().getFirstName(), callbackQuery.getFrom().getLastName());
+        } else if ("verify_channels".equals(data)) {
             handleChannelVerification(chatId, messageId, callbackQuery.getFrom().getUserName(),
                 callbackQuery.getFrom().getFirstName(), callbackQuery.getFrom().getLastName());
+        } else if ("my_referrals".equals(data)) {
+            handleMyReferrals(chatId, callbackQuery.getFrom().getUserName(),
+                callbackQuery.getFrom().getFirstName(), callbackQuery.getFrom().getLastName());
+        }
+    }
+    
+    /**
+     * Send welcome message sequence: greeting -> main message (with Takliflarim button)
+     */
+    private void sendWelcomeSequence(Long chatId, String firstName) {
+        try {
+            // 1. Send greeting
+            SendMessage greeting = messageService.createGreetingMessage(chatId, firstName);
+            execute(greeting);
+            
+            // Small delay for better UX
+            Thread.sleep(500);
+            
+            // 2. Send main welcome message with Takliflarim button
+            SendMessage mainWelcome = messageService.createMainWelcomeMessage(chatId);
+            execute(mainWelcome);
+            
+        } catch (TelegramApiException | InterruptedException e) {
+            log.error("Error sending welcome sequence", e);
+        }
+    }
+    
+    /**
+     * Handle START button press - show channel subscription
+     */
+    private void handleStartButton(Long chatId, Integer messageId, String username, String firstName, String lastName) {
+        User user = userService.getOrCreateUser(chatId, username, firstName, lastName);
+        
+        // Check if user has already verified channels
+        if (user.getHasVerifiedChannels()) {
+            // User already verified, show welcome sequence
+            sendWelcomeSequence(chatId, firstName);
+            return;
+        }
+        
+        // Delete the intro message
+        deleteMessage(chatId, messageId);
+        
+        // Show channel subscription request
+        List<Channel> activeChannels = channelService.getAllActiveChannels();
+        if (!activeChannels.isEmpty()) {
+            try {
+                SendMessage channelMessage = messageService.createChannelSubscriptionMessage(chatId, activeChannels);
+                execute(channelMessage);
+            } catch (TelegramApiException e) {
+                log.error("Error sending channel subscription message", e);
+            }
+        } else {
+            // No channels configured, mark as verified and show welcome
+            user.setHasVerifiedChannels(true);
+            userService.getOrCreateUser(chatId, username, firstName, lastName);
+            sendWelcomeMessageAfterVerification(chatId, username, firstName, lastName);
+        }
+    }
+    
+    /**
+     * Handle "My Referrals" button press - show stats with share button
+     */
+    private void handleMyReferrals(Long chatId, String username, String firstName, String lastName) {
+        User user = userService.getOrCreateUser(chatId, username, firstName, lastName);
+        
+        try {
+            // Calculate active and left referral counts
+            int totalReferrals = user.getReferralCount();
+            int indirectReferrals = user.getIndirectReferralCount();
+            int activeCount = 0;
+            int leftCount = 0;
+            
+            if (totalReferrals > 0) {
+                List<User> invitedUsers = userService.getUsersInvitedBy(user.getId());
+                List<Channel> requiredChannels = channelService.getAllActiveChannels();
+                
+                // If no channels configured, all referrals are considered active
+                if (requiredChannels.isEmpty()) {
+                    activeCount = totalReferrals;
+                } else {
+                    // Check each invited user's channel membership
+                    for (User invitedUser : invitedUsers) {
+                        boolean isActiveInAllChannels = true;
+                        
+                        for (Channel channel : requiredChannels) {
+                            if (!checkUserInChannel(invitedUser.getChatId(), channel.getChannelUsername())) {
+                                isActiveInAllChannels = false;
+                                break;
+                            }
+                        }
+                        
+                        if (isActiveInAllChannels) {
+                            activeCount++;
+                        } else {
+                            leftCount++;
+                        }
+                    }
+                }
+            }
+            
+            SendMessage statsMessage = messageService.createStatsMessageWithButton(
+                chatId,
+                getBotUsername(),
+                user.getReferralCode(),
+                totalReferrals,
+                indirectReferrals,
+                activeCount,
+                leftCount,
+                settingsService.getRequiredReferralCount()
+            );
+            execute(statsMessage);
+            
+            // Check if user now qualifies for private channel link
+            int requiredCount = settingsService.getRequiredReferralCount();
+            if (activeCount >= requiredCount && !user.getHasReceivedInviteLink()) {
+                // User has enough active referrals now - send private channel link
+                String inviteLink = getPrivateChannelLink();
+                String linkMessage = messageService.createPrivateChannelMessage(inviteLink, requiredCount);
+                sendMessage(chatId, linkMessage);
+                userService.markInviteLinkReceived(user);
+                log.info("User {} received private channel link after verification with {} active referrals", 
+                    chatId, activeCount);
+            }
+        } catch (TelegramApiException e) {
+            log.error("Error sending stats message", e);
+        }
+    }
+    
+    /**
+     * Handle inline query for sharing referral links
+     */
+    private void handleInlineQuery(InlineQuery inlineQuery) {
+        Long userId = inlineQuery.getFrom().getId();
+        String queryId = inlineQuery.getId();
+        String query = inlineQuery.getQuery();
+        
+        log.info("Received inline query from userId={}: {}", userId, query);
+        
+        try {
+            // Get user to retrieve referral code
+            User user = userService.findByChatId(userId).orElse(null);
+            if (user == null) {
+                // User not found, return empty result
+                AnswerInlineQuery answer = new AnswerInlineQuery();
+                answer.setInlineQueryId(queryId);
+                answer.setResults(List.of());
+                execute(answer);
+                return;
+            }
+            
+            String referralLink = String.format("https://t.me/%s?start=%s", getBotUsername(), user.getReferralCode());
+            
+            // Create inline query result article
+            InlineQueryResultArticle article = new InlineQueryResultArticle();
+            article.setId("referral_share");
+            article.setTitle("🎉 Botga taklif qiling!");
+            article.setDescription("Do'stlaringizni botga taklif qiling va bonuslar oling");
+            
+            // The message content that will be sent
+            InputTextMessageContent messageContent = new InputTextMessageContent();
+            
+            // Use the query text if provided, otherwise use default message
+            String shareText;
+            if (query != null && !query.trim().isEmpty()) {
+                shareText = query;
+            } else {
+                shareText = String.format(
+                    "Assalomu alaykum! Geometriya 0 dan yopiq guruhiga bepul kirish + bonus kitob olish uchun shu botga kiring 👉\n%s",
+                    referralLink
+                );
+            }
+            
+            messageContent.setMessageText(shareText);
+            messageContent.setDisableWebPagePreview(false); // Enable preview
+            article.setInputMessageContent(messageContent);
+            
+            // Answer the inline query
+            AnswerInlineQuery answer = new AnswerInlineQuery();
+            answer.setInlineQueryId(queryId);
+            answer.setResults(List.of(article));
+            answer.setCacheTime(300); // Cache for 5 minutes
+            
+            execute(answer);
+            log.info("Answered inline query for userId={}", userId);
+            
+        } catch (TelegramApiException e) {
+            log.error("Error handling inline query", e);
         }
     }
     
@@ -413,52 +624,136 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
                 // Remove from pending
                 pendingReferrals.remove(chatId);
                 
-                // Notify new user
-                String joinMessage = messageService.createJoinedViaReferralMessage(
-                    getBotUsername(), 
-                    user.getReferralCode(),
-                    settingsService.getRequiredReferralCount()
-                );
-                sendMessage(chatId, joinMessage);
-                
-                // Notify inviter and check for private channel link
+                // Notify inviter with info about who joined
                 userService.findByReferralCode(referralCode).ifPresent(inviter -> {
-                    String successMessage = messageService.createReferralSuccessMessage(
-                        inviter.getReferralCount(),
-                        settingsService.getRequiredReferralCount()
-                    );
-                    sendMessage(inviter.getChatId(), successMessage);
-                    
-                    // Check if inviter should receive private channel link
-                    checkAndSendPrivateChannelLink(inviter);
+                    try {
+                        SendMessage successMessage = messageService.createReferralSuccessMessage(
+                            inviter.getChatId(),
+                            inviter.getReferralCount(),
+                            settingsService.getRequiredReferralCount(),
+                            firstName,
+                            chatId
+                        );
+                        execute(successMessage);
+                        
+                        // Check if inviter should receive private channel link
+                        checkAndSendPrivateChannelLink(inviter);
+                    } catch (TelegramApiException e) {
+                        log.error("Error sending referral success message", e);
+                    }
                 });
-                
-                return;
             } else {
                 // Referral failed, remove from pending
                 pendingReferrals.remove(chatId);
             }
         }
         
-        // Send welcome message
-        String welcomeMessage = messageService.createWelcomeMessage(
-            getBotUsername(),
-            user.getReferralCode(),
-            user.getReferralCount(),
-            settingsService.getRequiredReferralCount()
-        );
-        sendMessage(chatId, welcomeMessage);
+        // Send the same welcome sequence for everyone (referral or direct)
+        sendWelcomeSequence(chatId, firstName);
     }
     
     /**
      * Check if user should receive private channel link and send it
+     * Verifies that invited users are still active in required channels
      */
     private void checkAndSendPrivateChannelLink(User user) {
-        if (userService.shouldReceiveInviteLink(user, settingsService.getRequiredReferralCount())) {
-            String inviteLink = botConfig.getPrivateChannel().getInviteLink();
-            String message = messageService.createPrivateChannelMessage(inviteLink, settingsService.getRequiredReferralCount());
+        int requiredCount = settingsService.getRequiredReferralCount();
+        
+        // Check if user already received the link
+        if (user.getHasReceivedInviteLink()) {
+            return;
+        }
+        
+        // Check if user has enough total referrals
+        if (user.getReferralCount() < requiredCount) {
+            return;
+        }
+        
+        // Get all users invited by this user
+        List<User> invitedUsers = userService.getUsersInvitedBy(user.getId());
+        
+        // Get all required channels
+        List<Channel> requiredChannels = channelService.getAllActiveChannels();
+        
+        // If no channels configured, just give the link
+        if (requiredChannels.isEmpty()) {
+            String inviteLink = getPrivateChannelLink();
+            String message = messageService.createPrivateChannelMessage(inviteLink, requiredCount);
             sendMessage(user.getChatId(), message);
             userService.markInviteLinkReceived(user);
+            return;
+        }
+        
+        // Count active and left users
+        int activeCount = 0;
+        int leftCount = 0;
+        
+        for (User invitedUser : invitedUsers) {
+            boolean isActiveInAllChannels = true;
+            
+            // Check membership in each required channel
+            for (Channel channel : requiredChannels) {
+                if (!checkUserInChannel(invitedUser.getChatId(), channel.getChannelUsername())) {
+                    isActiveInAllChannels = false;
+                    break;
+                }
+            }
+            
+            if (isActiveInAllChannels) {
+                activeCount++;
+            } else {
+                leftCount++;
+            }
+        }
+        
+        // Check if user has enough active referrals
+        if (activeCount >= requiredCount) {
+            // User has enough active referrals - send invite link
+            String inviteLink = getPrivateChannelLink();
+            String message = messageService.createPrivateChannelMessage(inviteLink, requiredCount);
+            sendMessage(user.getChatId(), message);
+            userService.markInviteLinkReceived(user);
+            log.info("User {} received private channel link with {} active referrals", user.getChatId(), activeCount);
+        } else {
+            // Not enough active referrals - send info message
+            try {
+                SendMessage message = messageService.createInsufficientActiveReferralsMessage(
+                    user.getChatId(), activeCount, leftCount, requiredCount);
+                execute(message);
+                log.info("User {} has {} active, {} left referrals (need {})", 
+                    user.getChatId(), activeCount, leftCount, requiredCount);
+            } catch (TelegramApiException e) {
+                log.error("Error sending insufficient referrals message", e);
+            }
+        }
+    }
+    
+    /**
+     * Check if user is an active member of a channel
+     */
+    private boolean checkUserInChannel(Long userId, String channelUsername) {
+        try {
+            GetChatMember getChatMember = new GetChatMember();
+            getChatMember.setChatId("@" + channelUsername);
+            getChatMember.setUserId(userId);
+            
+            ChatMember chatMember = execute(getChatMember);
+            
+            // Check if user is active member (not left or kicked)
+            String status = chatMember.getStatus();
+            boolean isActive = status.equals("member") || 
+                              status.equals("administrator") || 
+                              status.equals("creator");
+            
+            log.debug("User {} in channel @{}: status={}, active={}", 
+                userId, channelUsername, status, isActive);
+            
+            return isActive;
+        } catch (TelegramApiException e) {
+            log.error("Error checking user {} in channel @{}: {}", 
+                userId, channelUsername, e.getMessage());
+            // If we can't check, assume they're not in the channel
+            return false;
         }
     }
 
@@ -512,5 +807,13 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
         } catch (TelegramApiException e) {
             log.debug("Could not delete message {} from chatId={}: {}", messageId, chatId, e.getMessage());
         }
+    }
+    
+    /**
+     * Get private channel invite link from database or fallback to config
+     */
+    private String getPrivateChannelLink() {
+        return settingsService.getPrivateChannelLink()
+            .orElse(botConfig.getPrivateChannel().getInviteLink());
     }
 }

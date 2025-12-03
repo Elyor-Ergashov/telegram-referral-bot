@@ -179,27 +179,40 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
      */
     private void showSettingsMenu(Long chatId, Integer messageId) {
         int currentCount = settingsService.getRequiredReferralCount();
+        String currentLink = settingsService.getPrivateChannelLink().orElse("❌ O'rnatilmagan");
         
         EditMessageText message = new EditMessageText();
         message.setChatId(chatId.toString());
         message.setMessageId(messageId);
-        message.setText(String.format("⚙️ *Sozlamalar*\n\nHozirgi referallar soni: *%d*\n\nKerakli amalni tanlang:", currentCount));
+        message.setText(String.format(
+            "⚙️ *Sozlamalar*\n\n" +
+            "🔢 Hozirgi referallar soni: *%d*\n" +
+            "🔗 Kerakli amalahni tanlang:" +
+            "\n\nKerakli amalni tanlang:",
+            currentCount
+        ));
         message.setParseMode("Markdown");
         
         InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         
         // Set referrals button
-        InlineKeyboardButton setBtn = new InlineKeyboardButton();
-        setBtn.setText("🔢 Referallar sonini o'zgartirish");
-        setBtn.setCallbackData("settings_set_referrals");
+        InlineKeyboardButton setRefBtn = new InlineKeyboardButton();
+        setRefBtn.setText("🔢 Referallar sonini o'zgartirish");
+        setRefBtn.setCallbackData("settings_set_referrals");
+        
+        // Set private channel link button
+        InlineKeyboardButton setLinkBtn = new InlineKeyboardButton();
+        setLinkBtn.setText("🔗 Shaxsiy kanal havolasini o'zgartirish");
+        setLinkBtn.setCallbackData("settings_set_link");
         
         // Back button
         InlineKeyboardButton backBtn = new InlineKeyboardButton();
         backBtn.setText("« Orqaga");
         backBtn.setCallbackData("menu_main");
         
-        rows.add(List.of(setBtn));
+        rows.add(List.of(setRefBtn));
+        rows.add(List.of(setLinkBtn));
         rows.add(List.of(backBtn));
         
         keyboard.setKeyboard(rows);
@@ -244,6 +257,9 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                 break;
             case "settings_set_referrals":
                 startSetReferrals(chatId, messageId);
+                break;
+            case "settings_set_link":
+                startSetPrivateLink(chatId, messageId);
                 break;
             case "cancel_operation":
                 handleCancelOperation(chatId, messageId);
@@ -312,7 +328,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         userStates.put(chatId, "awaiting_channel_id");
         userData.put(chatId, new HashMap<>());
         
-        editMessage(chatId, messageId, "➕ *Kanal qo'shish*\n\nKanal ID sini yuboring:\n\n_Masalan: -1001234567890_", createCancelButton());
+        editMessage(chatId, messageId, "➕ *Kanal qo'shish*\n\nKanal ID sini yuboring:\n\n*Masalan:* `-1001234567890`", createCancelButton());
     }
     
     /**
@@ -333,7 +349,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             sb.append(String.format(
                 "%s *%s*\n" +
                 "ID: `%s`\n" +
-                "Username: @%s\n\n",
+                "Username: `@%s`\n\n",
                 channel.getIsActive() ? "✅" : "❌",
                 channel.getChannelName(),
                 channel.getChannelId(),
@@ -388,13 +404,13 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     }
     
     /**
-     * Handle remove channel confirmation
+     * Handle remove channel confirmation - permanently deletes channel
      */
     private void handleRemoveChannelConfirm(Long chatId, Integer messageId, String channelId) {
-        boolean removed = channelService.removeChannel(channelId);
+        boolean deleted = channelService.deleteChannel(channelId);
         
-        if (removed) {
-            editMessage(chatId, messageId, "✅ *Kanal o'chirildi!*", createBackToMenuButton());
+        if (deleted) {
+            editMessage(chatId, messageId, "✅ *Kanal butunlay o'chirildi!*", createBackToMenuButton());
         } else {
             editMessage(chatId, messageId, "❌ *Kanal topilmadi*", createBackToMenuButton());
         }
@@ -438,6 +454,9 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             case "awaiting_referral_count":
                 handleReferralCountInput(chatId, text, messageId);
                 break;
+            case "awaiting_private_link":
+                handlePrivateLinkInput(chatId, text, messageId);
+                break;
             default:
                 // Silently ignore unknown states
                 log.warn("Unknown state for chatId={}: {}", chatId, state);
@@ -457,7 +476,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         data.put("channelId", channelId);
         
         userStates.put(chatId, "awaiting_channel_name");
-        sendMessage(chatId, "✅ Kanal ID qabul qilindi.\n\n📝 Endi kanal nomini yuboring:\n\n_Masalan: Teacher Muzaffar Math_", createCancelButton());
+        sendMessage(chatId, "✅ Kanal ID qabul qilindi.\n\n📝 Endi kanal nomini yuboring:\n\n*Masalan:* `Teacher Muzaffar Math`", createCancelButton());
     }
     
     /**
@@ -470,7 +489,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         data.put("channelName", channelName);
         
         userStates.put(chatId, "awaiting_channel_username");
-        sendMessage(chatId, "✅ Kanal nomi qabul qilindi.\n\n👤 Endi kanal username ini yuboring (@ belgisisiz):\n\n_Masalan: TeacherMuzaffar_", createCancelButton());
+        sendMessage(chatId, "✅ Kanal nomi qabul qilindi.\n\n👤 Endi kanal username ini yuboring (@ belgisisiz):\n\n*Masalan:* `TeacherMuzaffar`", createCancelButton());
     }
     
     /**
@@ -495,11 +514,11 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                 "✅ *Kanal muvaffaqiyatli qo'shildi!*\n\n" +
                 "📺 *Nomi:* %s\n" +
                 "🆔 *ID:* `%s`\n" +
-                "👤 *Username:* @%s",
+                "👤 *Username:* `@%s`",
                 channel.getChannelName(), channel.getChannelId(), channel.getChannelUsername()
             ), createBackToMenuButton());
         } catch (IllegalArgumentException e) {
-            sendMessage(chatId, "❌ *Xatolik:* " + e.getMessage(), createBackToMenuButton());
+            sendMessage(chatId, "❌ *Xatolik:*\n" + e.getMessage(), createBackToMenuButton());
         } finally {
             // Clear state
             userStates.remove(chatId);
@@ -530,6 +549,40 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         } catch (NumberFormatException e) {
             sendMessage(chatId, "❌ Noto'g'ri format. Faqat son kiriting.\n\nQaytadan kiriting:");
         }
+    }
+    
+    /**
+     * Start set private channel link flow
+     */
+    private void startSetPrivateLink(Long chatId, Integer messageId) {
+        userStates.put(chatId, "awaiting_private_link");
+        
+        String currentLink = settingsService.getPrivateChannelLink().orElse("O'rnatilmagan");
+        editMessage(chatId, messageId, 
+            String.format("🔗 *Shaxsiy kanal havolasini o'zgartirish*\n\nHozirgi havola: `%s`\n\nYangi havolani yuboring (Telegram invite link):\n\n*Masalan:* `https://t.me/+abc123` yoki `https://t.me/joinchat/abc123`", currentLink), 
+            createCancelButton());
+    }
+    
+    /**
+     * Handle private channel link input
+     */
+    private void handlePrivateLinkInput(Long chatId, String text, Integer messageId) {
+        // Delete the user's message to keep chat clean
+        deleteMessage(chatId, messageId);
+        
+        String link = text.trim();
+        
+        // Basic validation - check if it looks like a Telegram link
+        if (!link.startsWith("https://t.me/") && !link.startsWith("http://t.me/")) {
+            sendMessage(chatId, "❌ Noto'g'ri havola formati.\n\nTelegram havolasi bo'lishi kerak (https://t.me/...).\n\nQaytadan kiriting:");
+            return;
+        }
+        
+        settingsService.setPrivateChannelLink(link);
+        sendMessage(chatId, String.format("✅ *Shaxsiy kanal havolasi o'zgartirildi!*\n\nYangi havola: `%s`", link), createBackToMenuButton());
+        
+        // Clear state
+        userStates.remove(chatId);
     }
     
     /**

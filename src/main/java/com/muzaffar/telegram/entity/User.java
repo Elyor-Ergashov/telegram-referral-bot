@@ -44,6 +44,10 @@ public class User {
     
     @Column(nullable = false)
     @Builder.Default
+    private Integer indirectReferralCount = 0;
+    
+    @Column(nullable = false)
+    @Builder.Default
     private Boolean hasReceivedInviteLink = false;
     
     @Column(nullable = false)

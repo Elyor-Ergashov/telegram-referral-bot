@@ -32,9 +32,6 @@ telegram:
   webhook:
     url: ${TELEGRAM_WEBHOOK_URL:https://yourdomain.com}
     path: /webhook
-    
-  privateChannel:
-    inviteLink: ${PRIVATE_CHANNEL_LINK}
 
 bot:
   admin:

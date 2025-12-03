@@ -16,23 +16,23 @@ public class BotSettingsService {
     
     private final BotSettingsRepository settingsRepository;
     
-    public static final String REFERRAL_COUNT_KEY = "referral_required_count";
+    private static final int DEFAULT_REFERRAL_COUNT = 5;
+    private static final String DEFAULT_PRIVATE_LINK = "";
     
     /**
-     * Get setting value by key
+     * Get the settings entity (single row)
      */
-    public Optional<String> getSetting(String key) {
-        return settingsRepository.findBySettingKey(key)
-            .map(BotSettings::getSettingValue);
+    private BotSettings getSettings() {
+        return settingsRepository.findAll().stream()
+            .findFirst()
+            .orElseGet(this::createDefaultSettings);
     }
     
     /**
      * Get required referral count
      */
     public int getRequiredReferralCount() {
-        return getSetting(REFERRAL_COUNT_KEY)
-            .map(Integer::parseInt)
-            .orElse(5); // Default value
+        return getSettings().getRequiredReferralCount();
     }
     
     /**
@@ -40,34 +40,44 @@ public class BotSettingsService {
      */
     @Transactional
     public void setRequiredReferralCount(int count) {
-        setSetting(REFERRAL_COUNT_KEY, String.valueOf(count), "Number of referrals required to get access");
+        BotSettings settings = getSettings();
+        settings.setRequiredReferralCount(count);
+        settingsRepository.save(settings);
         log.info("Updated required referral count to: {}", count);
     }
     
     /**
-     * Set a setting value
+     * Get private channel invite link
+     */
+    public Optional<String> getPrivateChannelLink() {
+        String link = getSettings().getPrivateChannelLink();
+        return (link == null || link.isEmpty()) ? Optional.empty() : Optional.of(link);
+    }
+    
+    /**
+     * Set private channel invite link
      */
     @Transactional
-    public void setSetting(String key, String value, String description) {
-        Optional<BotSettings> existingOpt = settingsRepository.findBySettingKey(key);
-        
-        if (existingOpt.isPresent()) {
-            BotSettings existing = existingOpt.get();
-            existing.setSettingValue(value);
-            if (description != null) {
-                existing.setDescription(description);
-            }
-            settingsRepository.save(existing);
-        } else {
-            BotSettings newSetting = BotSettings.builder()
-                .settingKey(key)
-                .settingValue(value)
-                .description(description)
-                .build();
-            settingsRepository.save(newSetting);
-        }
-        
-        log.info("Updated setting: {} = {}", key, value);
+    public void setPrivateChannelLink(String link) {
+        BotSettings settings = getSettings();
+        settings.setPrivateChannelLink(link);
+        settingsRepository.save(settings);
+        log.info("Updated private channel link to: {}", link);
+    }
+    
+    /**
+     * Create default settings if they don't exist
+     */
+    @Transactional
+    public BotSettings createDefaultSettings() {
+        BotSettings settings = BotSettings.builder()
+            .requiredReferralCount(DEFAULT_REFERRAL_COUNT)
+            .privateChannelLink(DEFAULT_PRIVATE_LINK)
+            .description("Bot configuration settings")
+            .build();
+        BotSettings saved = settingsRepository.save(settings);
+        log.info("Created default settings with referral count: {}", DEFAULT_REFERRAL_COUNT);
+        return saved;
     }
     
     /**
@@ -75,9 +85,9 @@ public class BotSettingsService {
      */
     @Transactional
     public void initializeDefaultSettings() {
-        if (settingsRepository.findBySettingKey(REFERRAL_COUNT_KEY).isEmpty()) {
-            setSetting(REFERRAL_COUNT_KEY, "2", "Number of referrals required to get access");
-            log.info("Initialized default referral count setting");
+        if (settingsRepository.count() == 0) {
+            createDefaultSettings();
+            log.info("Initialized default bot settings");
         }
     }
 }

@@ -16,7 +16,88 @@ import java.util.List;
 public class MessageService {
     
     /**
-     * Create welcome message for new user
+     * Create introduction message for first-time users
+     */
+    public SendMessage createIntroductionMessage(Long chatId) {
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId.toString());
+        message.setText(
+            "*What can this bot do?*\n\n" +
+            "Maxsus guruhda Milliy Sertifikat testlarini ishlang va rash modelida tahlil qiling.\n" +
+            "Ega: @Muzaffar_Sakhadinov"
+        );
+        message.setParseMode("Markdown");
+        
+        // Create START button
+        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        
+        InlineKeyboardButton startButton = new InlineKeyboardButton();
+        startButton.setText("START");
+        startButton.setCallbackData("start_bot");
+        
+        rows.add(List.of(startButton));
+        keyboard.setKeyboard(rows);
+        message.setReplyMarkup(keyboard);
+        
+        return message;
+    }
+    
+    /**
+     * Create greeting message (sent first)
+     */
+    public SendMessage createGreetingMessage(Long chatId, String firstName) {
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId.toString());
+        message.setText(String.format("🌟 Botga xush kelibsiz, %s!", firstName != null ? firstName : ""));
+        return message;
+    }
+    
+    /**
+     * Create main welcome message with share button (sent after greeting)
+     */
+    public SendMessage createMainWelcomeMessage(Long chatId) {
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId.toString());
+        
+        String text = 
+            "🎉 Assalomu alaykum!\n\n" +
+            "Matematikadan Milliy sertifikat imtihoniga bepul tayyorlanish imkoniyati!\n" +
+            "Va albatta siz uchun *1 ta bonus kitob* tayyorlab qo'ydim 📚✨\n\n" +
+            "🌟 Har bir yangi do'st taklif qilsangiz — *bonus ball* beriladi!\n" +
+            "🚀 Har bir taklif sizni sertifikatga yaqinlashtiradi!\n\n" +
+            "💥 Do'stingiz botga kirib kanalga a'zo bo'lsa — *+1 ball avto qo'shiladi!*\n\n" +
+            "🎯 5 ta matematikachi do'st taklif qilsangiz:\n" +
+            "🔥 *\"Geometriya 0 dan\" yopiq guruhiga bepul umrbod kirish!*\n\n" +
+            "🎁 Yuqori natija ko'rsatsangiz — *\"Geometriya Pro\"* guruhida o'qiysiz!\n\n" +
+            "📘 Bonus kitob faqat faol ishtirokchilarga!\n\n" +
+            "✨ Imkoniyatni qo'ldan boy bermang!\n\n" +
+            "❗ *Muhim:*\n" +
+            "Ball olish uchun do'stingiz botga kirib, majburiy kanallarga a'zo bo'lib, 10 kun chiqmasligi kerak\n\n" +
+            "💡 Do'stlaringizni hozir taklif qiling:\n" +
+            "(Havolani olish uchun Takliflarim tugmasini bosing...)\n\n" +
+            "📘 Asosiy menyuga xush kelibsiz!";
+        
+        message.setText(text);
+        message.setParseMode("Markdown");
+        
+        // Create keyboard with "Takliflarim" button
+        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        
+        InlineKeyboardButton myReferralsButton = new InlineKeyboardButton();
+        myReferralsButton.setText("👥 Takliflarim");
+        myReferralsButton.setCallbackData("my_referrals");
+        
+        rows.add(List.of(myReferralsButton));
+        keyboard.setKeyboard(rows);
+        message.setReplyMarkup(keyboard);
+        
+        return message;
+    }
+    
+    /**
+     * Create welcome message for new user (text only, for backward compatibility)
      */
     public String createWelcomeMessage(String botUsername, String referralCode, int referralCount, int requiredCount) {
         String referralLink = String.format("https://t.me/%s?start=%s", botUsername, referralCode);
@@ -32,7 +113,74 @@ public class MessageService {
     }
     
     /**
-     * Create stats message
+     * Create stats message with share button, showing active and left referrals
+     */
+    public SendMessage createStatsMessageWithButton(Long chatId, String botUsername, String referralCode, 
+                                                   int totalReferralCount, int indirectReferralCount, 
+                                                   int activeCount, int leftCount, int requiredCount) {
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId.toString());
+        
+        String referralLink = String.format("https://t.me/%s?start=%s", botUsername, referralCode);
+        int remaining = Math.max(0, requiredCount - activeCount);
+        int totalInvites = totalReferralCount + indirectReferralCount;
+        
+        StringBuilder text = new StringBuilder();
+        text.append("📊 *Sizning statistikangiz*\n\n");
+        text.append(String.format("📊 *Jami takliflaringiz:* %d (To'g'ridan-to'g'ri: %d, Bilvosita: %d)\n\n", 
+            totalInvites, totalReferralCount, indirectReferralCount));
+        text.append(String.format("👥 *Jami taklif qilganlar:* %d\n", totalReferralCount));
+        text.append(String.format("✅ *Aktiv referallar:* %d\n", activeCount));
+        
+        if (leftCount > 0) {
+            text.append(String.format("❌ *Kanaldan chiqib ketganlar:* %d\n", leftCount));
+        }
+        
+        text.append(String.format("🔄 *Bilvosita takliflar:* %d ta\n", indirectReferralCount));
+        text.append(String.format("🎯 *Mukofot uchun kerak:* %d\n\n", requiredCount));
+        
+        if (remaining > 0) {
+            text.append(String.format("⏳ *Yana kerak:* %d ta aktiv referal\n\n", remaining));
+        } else {
+            text.append("🎉 *Tabriklaymiz!* Siz kerakli referallarga erishdingiz!\n\n");
+        }
+        
+        text.append("🔗 *Sizning referal havolangiz:*\n");
+        text.append(String.format("`%s`\n\n", referralLink));
+        text.append("💡 Ko'proq do'stlarni taklif qilish uchun havolangizni ulashing!");
+        
+        message.setText(text.toString());
+        message.setParseMode("Markdown");
+        
+        // Create share button
+        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        
+        InlineKeyboardButton shareButton = new InlineKeyboardButton();
+        shareButton.setText("📤 Do'stlarimga ulashish");
+        
+        String shareMessage = String.format(
+            "Assalomu alaykum! Geometriya 0 dan yopiq guruhiga bepul kirish + bonus kitob olish uchun shu botga kiring 👉\n%s",
+            referralLink
+        );
+        
+        String shareUrl = String.format(
+            "https://t.me/share/url?url=%s&text=%s",
+            java.net.URLEncoder.encode(referralLink, java.nio.charset.StandardCharsets.UTF_8),
+            java.net.URLEncoder.encode(shareMessage, java.nio.charset.StandardCharsets.UTF_8)
+        );
+        
+        shareButton.setUrl(shareUrl);
+        
+        rows.add(List.of(shareButton));
+        keyboard.setKeyboard(rows);
+        message.setReplyMarkup(keyboard);
+        
+        return message;
+    }
+    
+    /**
+     * Create stats message (text only, for backward compatibility)
      */
     public String createStatsMessage(String botUsername, String referralCode, int referralCount, int requiredCount) {
         String referralLink = String.format("https://t.me/%s?start=%s", botUsername, referralCode);
@@ -57,23 +205,44 @@ public class MessageService {
     }
     
     /**
-     * Create success message for inviter when someone uses their referral
+     * Create referral success message with new user info and Takliflarim button
      */
-    public String createReferralSuccessMessage(int newCount, int requiredCount) {
-        int remaining = Math.max(0, requiredCount - newCount);
+    public SendMessage createReferralSuccessMessage(Long chatId, int newCount, int requiredCount, String newUserName, Long newUserId) {
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId.toString());
         
-        String message = String.format(
+        int remaining = requiredCount - newCount;
+        
+        String text = String.format(
             "🎊 *Ajoyib xabar!*\n\n" +
             "Kimdir sizning referal havolangiz orqali qo'shildi!\n\n" +
+            "👤 %s (ID: %d) sizning taklif havolangiz orqali botga qo'shildi!\n\n" +
             "👥 *Sizning referallaringiz:* %d/%d\n",
+            newUserName != null ? newUserName : "Foydalanuvchi",
+            newUserId,
             newCount, requiredCount
         );
         
         if (remaining > 0) {
-            message += String.format("\n⏳ Shaxsiy kanalni ochish uchun yana *%d ta* kerak!", remaining);
+            text += String.format("\n⏳ Shaxsiy kanalni ochish uchun yana *%d ta* kerak!", remaining);
         } else {
-            message += "\n✨ Siz kerakli referallarga erishdingiz!";
+            text += "\n✨ Siz kerakli referallarga erishdingiz!";
         }
+        
+        message.setText(text);
+        message.setParseMode("Markdown");
+        
+        // Add Takliflarim button
+        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        
+        InlineKeyboardButton referralsButton = new InlineKeyboardButton();
+        referralsButton.setText("👥 Takliflarim");
+        referralsButton.setCallbackData("my_referrals");
+        
+        rows.add(List.of(referralsButton));
+        keyboard.setKeyboard(rows);
+        message.setReplyMarkup(keyboard);
         
         return message;
     }
@@ -93,20 +262,48 @@ public class MessageService {
     }
     
     /**
-     * Create message when user uses referral link
+     * Create referral info message with share button (sent after main welcome)
      */
-    public String createJoinedViaReferralMessage(String botUsername, String referralCode, int requiredCount) {
+    public SendMessage createReferralInfoMessage(Long chatId, String botUsername, String referralCode) {
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId.toString());
+        
         String referralLink = String.format("https://t.me/%s?start=%s", botUsername, referralCode);
         
-        return String.format(
-            "🎉 *Xush kelibsiz!*\n\n" +
-            "Siz referal havola orqali qo'shildingiz!\n\n" +
-            "Endi o'zingizning referal havolangizni yarating va do'stlaringizni taklif qiling:\n\n" +
+        String text = String.format(
             "🔗 *Sizning referal havolangiz:*\n`%s`\n\n" +
-            "Maxsus shaxsiy kanalni ochish uchun *%d ta do'stingizni* taklif qiling!\n\n" +
-            "💡 Jarayoningizni tekshirish uchun /stats dan foydalaning.",
-            referralLink, requiredCount
+            "Do'stlaringizga ulashing va bonuslar qo'lga kiriting!",
+            referralLink
         );
+        
+        message.setText(text);
+        message.setParseMode("Markdown");
+        
+        // Create share button
+        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        
+        InlineKeyboardButton shareButton = new InlineKeyboardButton();
+        shareButton.setText("📤 Do'stlarimga ulashish");
+        
+        String shareMessage = String.format(
+            "Assalomu alaykum! Geometriya 0 dan yopiq guruhiga bepul kirish + bonus kitob olish uchun shu botga kiring 👉\n%s",
+            referralLink
+        );
+        
+        String shareUrl = String.format(
+            "https://t.me/share/url?url=%s&text=%s",
+            java.net.URLEncoder.encode(referralLink, java.nio.charset.StandardCharsets.UTF_8),
+            java.net.URLEncoder.encode(shareMessage, java.nio.charset.StandardCharsets.UTF_8)
+        );
+        
+        shareButton.setUrl(shareUrl);
+        
+        rows.add(List.of(shareButton));
+        keyboard.setKeyboard(rows);
+        message.setReplyMarkup(keyboard);
+        
+        return message;
     }
     
     /**
@@ -181,6 +378,41 @@ public class MessageService {
         message.setChatId(chatId.toString());
         message.setText(text);
         message.setParseMode("Markdown");
+        return message;
+    }
+    
+    /**
+     * Create message when user doesn't have enough active referrals with Takliflarim button
+     */
+    public SendMessage createInsufficientActiveReferralsMessage(Long chatId, int activeCount, int leftCount, int requiredCount) {
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId.toString());
+        
+        int remaining = requiredCount - activeCount;
+        
+        StringBuilder text = new StringBuilder();
+        text.append("⚠️ *Shaxsiy kanal uchun yetarli emas!*\n\n");
+        text.append(String.format("✅ *Aktiv referallar:* %d\n", activeCount));
+        text.append(String.format("❌ *Kanaldan chiqib ketganlar:* %d\n", leftCount));
+        text.append(String.format("🎯 *Kerak:* %d\n\n", requiredCount));
+        text.append(String.format("⏳ *Yana kerak:* %d ta aktiv referal\n\n", remaining));
+        text.append("💡 Kanaldan chiqib ketgan do'stlaringizni qaytadan taklif qiling yoki yanglarini taklif qiling!");
+        
+        message.setText(text.toString());
+        message.setParseMode("Markdown");
+        
+        // Add Takliflarim button
+        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        
+        InlineKeyboardButton referralsButton = new InlineKeyboardButton();
+        referralsButton.setText("👥 Takliflarim");
+        referralsButton.setCallbackData("my_referrals");
+        
+        rows.add(List.of(referralsButton));
+        keyboard.setKeyboard(rows);
+        message.setReplyMarkup(keyboard);
+        
         return message;
     }
 }

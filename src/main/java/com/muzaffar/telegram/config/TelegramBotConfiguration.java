@@ -38,12 +38,10 @@ public class TelegramBotConfiguration {
             try {
                 TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
                 
-                // Register User Bot
                 botsApi.registerBot(telegramBot);
                 log.info("✅ User bot registered successfully with LONG POLLING mode");
                 log.info("User bot username: @{}", telegramBot.getBotUsername());
                 
-                // Register Admin Bot (if token is configured)
                 if (adminBot.getBotToken() != null && !adminBot.getBotToken().isEmpty()) {
                     botsApi.registerBot(adminBot);
                     log.info("✅ Admin bot registered successfully with LONG POLLING mode");
