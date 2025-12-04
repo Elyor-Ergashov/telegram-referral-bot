@@ -1,5 +1,6 @@
 package com.muzaffar.telegram.service;
 
+import com.muzaffar.telegram.enums.MessageKey;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -15,7 +16,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class MessageService {
     
-    private final BotSettingsService settingsService;
+    private final MessageTemplateService messageTemplateService;
     
     /**
      * Create introduction message for first-time users
@@ -63,7 +64,7 @@ public class MessageService {
         message.setChatId(chatId.toString());
         
         // Get welcome text from database
-        String text = settingsService.getWelcomeMessageText();
+        String text = messageTemplateService.getText(MessageKey.WELCOME_MESSAGE);
         
         message.setText(text);
         message.setParseMode("Markdown");
@@ -115,9 +116,10 @@ public class MessageService {
         StringBuilder text = new StringBuilder();
         
         // Add optional header text from database
-        settingsService.getStatsHeaderText().ifPresent(headerText -> {
+        String headerText = messageTemplateService.getText(MessageKey.STATS_HEADER);
+        if (headerText != null && !headerText.isEmpty()) {
             text.append(headerText).append("\n\n");
-        });
+        }
         
         text.append("📊 *Sizning statistikangiz*\n\n");
         text.append(String.format("📊 *Jami takliflaringiz:* %d (To'g'ridan-to'g'ri: %d, Bilvosita: %d)\n\n", 

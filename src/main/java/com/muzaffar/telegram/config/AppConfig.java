@@ -14,6 +14,7 @@ public class AppConfig {
     
     private AdminProperties admin = new AdminProperties();
     private ReferralProperties referral = new ReferralProperties();
+    private ImagesProperties images = new ImagesProperties();
     
     @Data
     public static class AdminProperties {
@@ -23,5 +24,10 @@ public class AppConfig {
     @Data
     public static class ReferralProperties {
         private int requiredCount = 5;
+    }
+    
+    @Data
+    public static class ImagesProperties {
+        private String basePath = "";
     }
 }

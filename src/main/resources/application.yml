@@ -36,6 +36,8 @@ telegram:
 bot:
   admin:
     chatIds: ${ADMIN_CHAT_IDS}
+  images:
+    basePath: ${BOT_IMAGES_BASE_PATH}
 
 server:
   port: 8080

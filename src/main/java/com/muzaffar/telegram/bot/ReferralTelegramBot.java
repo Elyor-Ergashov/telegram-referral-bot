@@ -4,9 +4,11 @@ import com.muzaffar.telegram.config.AppConfig;
 import com.muzaffar.telegram.config.BotConfig;
 import com.muzaffar.telegram.entity.Channel;
 import com.muzaffar.telegram.entity.User;
+import com.muzaffar.telegram.enums.MessageKey;
 import com.muzaffar.telegram.service.BotSettingsService;
 import com.muzaffar.telegram.service.ChannelService;
 import com.muzaffar.telegram.service.MessageService;
+import com.muzaffar.telegram.service.MessageTemplateService;
 import com.muzaffar.telegram.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -43,6 +45,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
     private final MessageService messageService;
     private final ChannelService channelService;
     private final BotSettingsService settingsService;
+    private final MessageTemplateService messageTemplateService;
     
     // Store referral codes temporarily for users who need to verify channels first
     private final Map<Long, String> pendingReferrals = new HashMap<>();
@@ -52,7 +55,8 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
     
     public ReferralTelegramBot(BotConfig botConfig, AppConfig appConfig, 
                       UserService userService, MessageService messageService,
-                      ChannelService channelService, BotSettingsService settingsService) {
+                      ChannelService channelService, BotSettingsService settingsService,
+                      MessageTemplateService messageTemplateService) {
         super(botConfig.getBot().getToken());
         this.botConfig = botConfig;
         this.appConfig = appConfig;
@@ -60,6 +64,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
         this.messageService = messageService;
         this.channelService = channelService;
         this.settingsService = settingsService;
+        this.messageTemplateService = messageTemplateService;
     }
     
     @Override
@@ -392,7 +397,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
             }
             
             // Send optional stats header image first
-            settingsService.getStatsHeaderImagePath().ifPresent(imagePath -> {
+            messageTemplateService.getImagePath(MessageKey.STATS_HEADER).ifPresent(imagePath -> {
                 try {
                     sendPhotoFromFile(chatId, imagePath);
                 } catch (Exception e) {
@@ -789,14 +794,32 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
     }
     
     /**
-     * Send photo from file to user
+     * Get full image path by combining base path with relative path
+     */
+    private String getFullImagePath(String relativePath) {
+        String basePath = appConfig.getImages().getBasePath();
+        if (basePath == null || basePath.isEmpty()) {
+            return relativePath;
+        }
+        // Ensure base path ends with separator
+        if (!basePath.endsWith("/") && !basePath.endsWith("\\")) {
+            basePath += java.io.File.separator;
+        }
+        return basePath + relativePath.replace("/", java.io.File.separator);
+    }
+    
+    /**
+     * Send photo from file to user (accepts relative or absolute path)
      */
     private void sendPhotoFromFile(Long chatId, String filePath) throws TelegramApiException {
+        // Convert relative path to full path if needed
+        String fullPath = getFullImagePath(filePath);
+        
         SendPhoto photo = new SendPhoto();
         photo.setChatId(chatId.toString());
-        photo.setPhoto(new InputFile(new java.io.File(filePath)));
+        photo.setPhoto(new InputFile(new java.io.File(fullPath)));
         execute(photo);
-        log.info("Sent photo from file to chatId={}: {}", chatId, filePath);
+        log.info("Sent photo from file to chatId={}: {} (full: {})", chatId, filePath, fullPath);
     }
     
     /**

@@ -4,8 +4,10 @@ import com.muzaffar.telegram.config.AppConfig;
 import com.muzaffar.telegram.config.BotConfig;
 import com.muzaffar.telegram.entity.Channel;
 import com.muzaffar.telegram.entity.User;
+import com.muzaffar.telegram.enums.MessageKey;
 import com.muzaffar.telegram.service.BotSettingsService;
 import com.muzaffar.telegram.service.ChannelService;
+import com.muzaffar.telegram.service.MessageTemplateService;
 import com.muzaffar.telegram.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -41,6 +43,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     private final AppConfig appConfig;
     private final ChannelService channelService;
     private final BotSettingsService settingsService;
+    private final MessageTemplateService messageTemplateService;
     private final UserService userService;
     
     private ReferralTelegramBot referralBot;
@@ -48,25 +51,42 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     private final Map<Long, String> userStates = new HashMap<>();
     private final Map<Long, Map<String, String>> userData = new HashMap<>();
     
-    private static final String IMAGES_DIRECTORY = "bot_images/stats_headers/";
+    private static final String IMAGES_RELATIVE_DIRECTORY = "bot_images/stats_headers/";
     
     public AdminTelegramBot(BotConfig botConfig, AppConfig appConfig,
                            ChannelService channelService, BotSettingsService settingsService,
-                           UserService userService) {
+                           MessageTemplateService messageTemplateService, UserService userService) {
         super(botConfig.getAdminBot().getToken());
         this.botConfig = botConfig;
         this.appConfig = appConfig;
         this.channelService = channelService;
         this.settingsService = settingsService;
+        this.messageTemplateService = messageTemplateService;
         this.userService = userService;
         
         // Create images directory if it doesn't exist
         try {
-            Files.createDirectories(Paths.get(IMAGES_DIRECTORY));
-            log.info("Stats header images directory created/verified: {}", IMAGES_DIRECTORY);
+            String fullPath = getFullImagePath("");
+            Files.createDirectories(Paths.get(fullPath));
+            log.info("Stats header images directory created/verified: {}", fullPath);
         } catch (IOException e) {
             log.error("Failed to create images directory", e);
         }
+    }
+    
+    /**
+     * Get full image path by combining base path with relative path
+     */
+    private String getFullImagePath(String relativePath) {
+        String basePath = appConfig.getImages().getBasePath();
+        if (basePath == null || basePath.isEmpty()) {
+            return relativePath;
+        }
+        // Ensure base path ends with separator
+        if (!basePath.endsWith("/") && !basePath.endsWith("\\")) {
+            basePath += File.separator;
+        }
+        return basePath + relativePath.replace("/", File.separator);
     }
     
     /**
@@ -226,13 +246,8 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         EditMessageText message = new EditMessageText();
         message.setChatId(chatId.toString());
         message.setMessageId(messageId);
-        message.setText(String.format(
-            "⚙️ *Sozlamalar*\n\n" +
-            "🔢 Hozirgi referallar soni: *%d*\n" +
-            "🔗 Kerakli amalahni tanlang:" +
-            "\n\nKerakli amalni tanlang:",
-            currentCount
-        ));
+        message.setText("⚙️ *Sozlamalar*\n\n" +
+                "🔗 Kerakli amallarni tanlang:");
         message.setParseMode("Markdown");
         
         InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
@@ -248,20 +263,15 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         setLinkBtn.setText("🔗 Shaxsiy kanal havolasini o'zgartirish");
         setLinkBtn.setCallbackData("settings_set_link");
         
-        // Set welcome message button
+        // Set welcome message button (text + image)
         InlineKeyboardButton setWelcomeBtn = new InlineKeyboardButton();
         setWelcomeBtn.setText("📝 Welcome xabarini o'zgartirish");
         setWelcomeBtn.setCallbackData("settings_set_welcome");
         
-        // Set stats header text button
+        // Set stats header button (text + image)
         InlineKeyboardButton setStatsTextBtn = new InlineKeyboardButton();
         setStatsTextBtn.setText("📊 Statistika sarlavhasini o'zgartirish");
         setStatsTextBtn.setCallbackData("settings_set_stats_text");
-        
-        // Set stats header image button
-        InlineKeyboardButton setStatsImageBtn = new InlineKeyboardButton();
-        setStatsImageBtn.setText("🖼 Statistika rasmini o'zgartirish");
-        setStatsImageBtn.setCallbackData("settings_set_stats_image");
         
         // Back button
         InlineKeyboardButton backBtn = new InlineKeyboardButton();
@@ -272,7 +282,6 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         rows.add(List.of(setLinkBtn));
         rows.add(List.of(setWelcomeBtn));
         rows.add(List.of(setStatsTextBtn));
-        rows.add(List.of(setStatsImageBtn));
         rows.add(List.of(backBtn));
         
         keyboard.setKeyboard(rows);
@@ -383,10 +392,25 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                 startSetWelcomeMessage(chatId, messageId);
                 break;
             case "settings_set_stats_text":
-                startSetStatsHeaderText(chatId, messageId);
+                startSetStatsHeader(chatId, messageId);
                 break;
-            case "settings_set_stats_image":
-                startSetStatsHeaderImage(chatId, messageId);
+            case "edit_welcome_text":
+                startEditWelcomeText(chatId, messageId);
+                break;
+            case "edit_welcome_image":
+                startEditWelcomeImage(chatId, messageId);
+                break;
+            case "delete_welcome_image":
+                confirmDeleteWelcomeImage(chatId, messageId);
+                break;
+            case "edit_stats_text":
+                startEditStatsText(chatId, messageId);
+                break;
+            case "edit_stats_image":
+                startEditStatsImage(chatId, messageId);
+                break;
+            case "delete_stats_image":
+                confirmDeleteStatsImage(chatId, messageId);
                 break;
             case "cancel_operation":
                 handleCancelOperation(chatId, messageId);
@@ -592,11 +616,8 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             case "awaiting_welcome_message":
                 handleWelcomeMessageInput(chatId, text, messageId);
                 break;
-            case "awaiting_stats_header_text":
-                handleStatsHeaderTextInput(chatId, text, messageId);
-                break;
-            case "awaiting_stats_header_image":
-                handleStatsHeaderImageInput(chatId, text, messageId);
+            case "awaiting_stats_header":
+                handleStatsHeaderInput(chatId, text, messageId);
                 break;
             case "awaiting_broadcast_user_id":
                 handleBroadcastUserIdInput(chatId, text, messageId);
@@ -703,7 +724,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         
         String currentLink = settingsService.getPrivateChannelLink().orElse("O'rnatilmagan");
         editMessage(chatId, messageId, 
-            String.format("🔗 *Shaxsiy kanal havolasini o'zgartirish*\n\nHozirgi havola: `%s`\n\nYangi havolani yuboring (Telegram invite link):\n\n*Masalan:* `https://t.me/+abc123` yoki `https://t.me/joinchat/abc123`", currentLink), 
+            String.format("🔗 *Shaxsiy kanal havolasini o'zgartirish*\n\nHozirgi havola: `%s`\n\nYangi havolani yuboring (Telegram invite link):\n\n*Masalan:* `https://t.me/+abc123`", currentLink),
             createCancelButton());
     }
     
@@ -730,124 +751,336 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     }
     
     /**
-     * Start set welcome message flow
+     * Start set welcome message flow - show action menu
      */
     private void startSetWelcomeMessage(Long chatId, Integer messageId) {
-        userStates.put(chatId, "awaiting_welcome_message");
+        // Delete old menu message first
+        deleteMessage(chatId, messageId);
         
-        String currentText = settingsService.getWelcomeMessageText();
+        // Show current image if exists (will appear first)
+        messageTemplateService.getImagePath(MessageKey.WELCOME_MESSAGE).ifPresent(imagePath -> {
+            try {
+                sendPhotoFromFile(chatId, imagePath, "🖼 *Hozirgi rasm:*");
+            } catch (Exception e) {
+                log.error("Error sending current welcome image", e);
+            }
+        });
         
-        editMessage(chatId, messageId, 
-            String.format("📝 *Welcome xabarini o'zgartirish*\n\nHozirgi xabar:\n```\n%s\n```\n\nAgar matnni o'zgartirmoqchi bo'lsayiz,yangi xabar matnini yuboring:\n\n*Eslatma:* Markdown formatidan foydalanishingiz mumkin (*bold*, _italic_, `code`)", currentText),
-            createCancelButton());
+        String currentText = messageTemplateService.getText(MessageKey.WELCOME_MESSAGE);
+        boolean hasImage = messageTemplateService.getImagePath(MessageKey.WELCOME_MESSAGE).isPresent();
+        
+        // Create new menu message
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId.toString());
+        message.setText(
+            String.format(
+                "📝 *Welcome xabarini o'zgartirish*\n\n" +
+                "📝 *Hozirgi matn:*\n```\n%s\n```\n\n" +
+                "🖼 *Rasm:* %s\n\n" +
+                "Kerakli amalni tanlang:",
+                currentText,
+                hasImage ? "✅ O'rnatilgan" : "❌ O'rnatilmagan"
+            )
+        );
+        message.setParseMode("Markdown");
+        
+        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        
+        // Edit text button
+        InlineKeyboardButton editTextBtn = new InlineKeyboardButton();
+        editTextBtn.setText("🔹 Matnni o'zgartirish");
+        editTextBtn.setCallbackData("edit_welcome_text");
+        
+        // Edit/Add image button (text changes based on whether image exists)
+        InlineKeyboardButton editImageBtn = new InlineKeyboardButton();
+        editImageBtn.setText(hasImage ? "🔹 Rasmni o'zgartirish" : "🔹 Rasm qo'shish");
+        editImageBtn.setCallbackData("edit_welcome_image");
+        
+        // Delete image button (only if image exists)
+        InlineKeyboardButton deleteImageBtn = new InlineKeyboardButton();
+        deleteImageBtn.setText("🔹 Rasmni o'chirish");
+        deleteImageBtn.setCallbackData("delete_welcome_image");
+        
+        // Back button
+        InlineKeyboardButton backBtn = new InlineKeyboardButton();
+        backBtn.setText("« Orqaga");
+        backBtn.setCallbackData("menu_settings");
+        
+        rows.add(List.of(editTextBtn));
+        rows.add(List.of(editImageBtn));
+        if (hasImage) {
+            rows.add(List.of(deleteImageBtn));
+        }
+        rows.add(List.of(backBtn));
+        
+        keyboard.setKeyboard(rows);
+        message.setReplyMarkup(keyboard);
+        
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            log.error("Error showing welcome message menu", e);
+        }
     }
     
     /**
-     * Handle welcome message input
+     * Handle welcome message text input
      */
     private void handleWelcomeMessageInput(Long chatId, String text, Integer messageId) {
         deleteMessage(chatId, messageId);
         
-        if (text.trim().isEmpty()) {
+        String trimmedText = text.trim();
+        
+        if (trimmedText.isEmpty()) {
             sendMessage(chatId, "❌ Xabar bo'sh bo'lishi mumkin emas.\n\nQaytadan kiriting:");
             return;
         }
         
-        settingsService.setWelcomeMessageText(text);
-        sendMessage(chatId, "✅ *Xush kelibsiz xabari o'zgartirildi!*\n\nYangi foydalanuvchilar ushbu xabarni ko'rishadi.", createBackToMenuButton());
+        messageTemplateService.updateText(MessageKey.WELCOME_MESSAGE, trimmedText);
+        sendMessage(chatId, "✅ *Welcome xabari o'zgartirildi!*\n\nYangi foydalanuvchilar ushbu xabarni ko'rishadi.", createBackToMenuButton());
         
         userStates.remove(chatId);
     }
     
     /**
-     * Start set stats header text flow
+     * Start set stats header flow - show action menu
      */
-    private void startSetStatsHeaderText(Long chatId, Integer messageId) {
-        userStates.put(chatId, "awaiting_stats_header_text");
+    private void startSetStatsHeader(Long chatId, Integer messageId) {
+        // Delete old menu message first
+        deleteMessage(chatId, messageId);
         
-        String currentText = settingsService.getStatsHeaderText().orElse("O'rnatilmagan");
+        // Show current image if exists (will appear first)
+        messageTemplateService.getImagePath(MessageKey.STATS_HEADER).ifPresent(imagePath -> {
+            try {
+                sendPhotoFromFile(chatId, imagePath, "🖼 *Hozirgi rasm:*");
+            } catch (Exception e) {
+                log.error("Error sending current stats header image", e);
+            }
+        });
         
-        editMessage(chatId, messageId, 
-            String.format("📊 *Statistika sarlavhasini o'zgartirish*\n\nHozirgi sarlavha: ```\n%s\n```\n\nAgar matnni o'zgartirmoqchi bo'lsayiz,yangi xabar matnini yuboring:\n\n*Eslatma:* Bu matn statistika xabarining boshida ko'rsatiladi.", currentText),
-            createCancelButton());
+        String currentText = messageTemplateService.getText(MessageKey.STATS_HEADER);
+        if (currentText == null || currentText.isEmpty()) {
+            currentText = "O'rnatilmagan";
+        }
+        boolean hasImage = messageTemplateService.getImagePath(MessageKey.STATS_HEADER).isPresent();
+        
+        // Create new menu message
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId.toString());
+        message.setText(
+            String.format(
+                "📊 *Statistika sarlavhasini o'zgartirish*\n\n" +
+                "📝 *Hozirgi matn:*\n```\n%s\n```\n\n" +
+                "🖼 *Rasm:* %s\n\n" +
+                "Kerakli amalni tanlang:",
+                currentText,
+                hasImage ? "✅ O'rnatilgan" : "❌ O'rnatilmagan"
+            )
+        );
+        message.setParseMode("Markdown");
+        
+        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        
+        // Edit text button
+        InlineKeyboardButton editTextBtn = new InlineKeyboardButton();
+        editTextBtn.setText("🔹 Matnni o'zgartirish");
+        editTextBtn.setCallbackData("edit_stats_text");
+        
+        // Edit/Add image button (text changes based on whether image exists)
+        InlineKeyboardButton editImageBtn = new InlineKeyboardButton();
+        editImageBtn.setText(hasImage ? "🔹 Rasmni o'zgartirish" : "🔹 Rasm qo'shish");
+        editImageBtn.setCallbackData("edit_stats_image");
+        
+        // Delete image button (only if image exists)
+        InlineKeyboardButton deleteImageBtn = new InlineKeyboardButton();
+        deleteImageBtn.setText("🔹 Rasmni o'chirish");
+        deleteImageBtn.setCallbackData("delete_stats_image");
+        
+        // Back button
+        InlineKeyboardButton backBtn = new InlineKeyboardButton();
+        backBtn.setText("« Orqaga");
+        backBtn.setCallbackData("menu_settings");
+        
+        rows.add(List.of(editTextBtn));
+        rows.add(List.of(editImageBtn));
+        if (hasImage) {
+            rows.add(List.of(deleteImageBtn));
+        }
+        rows.add(List.of(backBtn));
+        
+        keyboard.setKeyboard(rows);
+        message.setReplyMarkup(keyboard);
+        
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            log.error("Error showing stats header menu", e);
+        }
     }
     
     /**
      * Handle stats header text input
      */
-    private void handleStatsHeaderTextInput(Long chatId, String text, Integer messageId) {
+    private void handleStatsHeaderInput(Long chatId, String text, Integer messageId) {
         deleteMessage(chatId, messageId);
         
         String trimmedText = text.trim();
         
-        if (trimmedText.equalsIgnoreCase("o'chirish") || trimmedText.equalsIgnoreCase("delete")) {
-            settingsService.setStatsHeaderText("");
-            sendMessage(chatId, "✅ *Statistika sarlavhasi o'chirildi!*", createBackToMenuButton());
-        } else {
-            settingsService.setStatsHeaderText(trimmedText);
-            sendMessage(chatId, "✅ *Statistika sarlavhasi o'zgartirildi!*", createBackToMenuButton());
+        if (trimmedText.isEmpty()) {
+            sendMessage(chatId, "❌ Matn bo'sh bo'lishi mumkin emas.\n\nQaytadan kiriting:");
+            return;
         }
+        
+        messageTemplateService.updateText(MessageKey.STATS_HEADER, trimmedText);
+        sendMessage(chatId, "✅ *Statistika sarlavhasi o'zgartirildi!*", createBackToMenuButton());
         
         userStates.remove(chatId);
     }
     
+    // ========== Welcome Message Actions ==========
+    
     /**
-     * Start set stats header image flow
+     * Start editing welcome text
      */
-    private void startSetStatsHeaderImage(Long chatId, Integer messageId) {
-        userStates.put(chatId, "awaiting_stats_header_image");
+    private void startEditWelcomeText(Long chatId, Integer messageId) {
+        userStates.put(chatId, "awaiting_welcome_message");
         
-        // Delete the menu message first
-        deleteMessage(chatId, messageId);
+        String currentText = messageTemplateService.getText(MessageKey.WELCOME_MESSAGE);
         
-        // Send current image if it exists
-        settingsService.getStatsHeaderImagePath().ifPresentOrElse(
-            imagePath -> {
-                try {
-                    // Send current image
-                    sendPhotoFromFile(chatId, imagePath, "🖼 *Hozirgi rasm:*");
-                } catch (Exception e) {
-                    log.error("Error sending current stats header image", e);
-                    sendMessage(chatId, "⚠️ Hozirgi rasmni yuklashda xatolik.\n\nYangi rasm yuboring:");
-                }
-            },
-            () -> {
-                // No current image
-                sendMessage(chatId, "🖼 *Statistika rasmini o'zgartirish*\n\nHozirda rasm o'rnatilmagan.");
-            }
+        editMessage(chatId, messageId,
+            String.format(
+                "📝 *Welcome matnini o'zgartirish*\n\n" +
+                "📝 *Hozirgi matn:*\n```\n%s\n```\n\n" +
+                "Yangi matnni yuboring:\n\n" +
+                "*Eslatma:* Markdown formatidan foydalanishingiz mumkin (*bold*, _italic_, `code`)",
+                currentText
+            ),
+            createCancelButton()
         );
-        
-        // Send instruction message
-        sendMessage(chatId, 
-            "🖼 *Statistika rasmini o'zgartirish*\n\nAgar rasmni o'zgartirmoqchi bo'lsayiz,yangi rasmni yuboring:\n\n*Eslatma:* Bu rasm statistika xabarining yuqorisida yuboriladi.",
-            createCancelButton());
     }
     
     /**
-     * Handle stats header image text input (for delete command)
+     * Start editing welcome image
      */
-    private void handleStatsHeaderImageInput(Long chatId, String text, Integer messageId) {
+    private void startEditWelcomeImage(Long chatId, Integer messageId) {
+        userStates.put(chatId, "awaiting_welcome_image");
+        
+        // Delete menu message
         deleteMessage(chatId, messageId);
         
-        String trimmedText = text.trim();
+        // Show current image if exists
+        messageTemplateService.getImagePath(MessageKey.WELCOME_MESSAGE).ifPresent(imagePath -> {
+            try {
+                sendPhotoFromFile(chatId, imagePath, "🖼 *Hozirgi rasm:*");
+            } catch (Exception e) {
+                log.error("Error sending current welcome image", e);
+            }
+        });
         
-        if (trimmedText.equalsIgnoreCase("o'chirish") || trimmedText.equalsIgnoreCase("delete")) {
-            // Delete old image file if exists
-            settingsService.getStatsHeaderImagePath().ifPresent(oldPath -> {
-                try {
-                    Files.deleteIfExists(Paths.get(oldPath));
-                    log.info("Deleted old stats header image: {}", oldPath);
-                } catch (IOException e) {
-                    log.error("Failed to delete old image file", e);
-                }
-            });
-            
-            settingsService.setStatsHeaderImagePath("");
-            sendMessage(chatId, "✅ *Statistika rasmi o'chirildi!*", createBackToMenuButton());
-            userStates.remove(chatId);
-        } else {
-            sendMessage(chatId, "❌ Iltimos, rasm faylini yuboring yoki \"o'chirish\" deb yozing.");
+        sendMessage(chatId,
+            "🖼 *Welcome rasmini o'zgartirish*\n\n" +
+            "Yangi rasmni yuboring (foto yoki fayl ko'rinishida):\n\n" +
+            "*Eslatma:* Sifatli rasm uchun faylni siqilmagan holda yuboring (Document).",
+            createCancelButton()
+        );
+    }
+    
+    /**
+     * Confirm delete welcome image
+     */
+    private void confirmDeleteWelcomeImage(Long chatId, Integer messageId) {
+        // Delete old image file if exists
+        messageTemplateService.getImagePath(MessageKey.WELCOME_MESSAGE).ifPresent(oldPath -> {
+            try {
+                String fullOldPath = getFullImagePath(oldPath);
+                Files.deleteIfExists(Paths.get(fullOldPath));
+                log.info("Deleted welcome image: {}", fullOldPath);
+            } catch (IOException e) {
+                log.error("Failed to delete old image file", e);
+            }
+        });
+        
+        messageTemplateService.updateImagePath(MessageKey.WELCOME_MESSAGE, "");
+        
+        editMessage(chatId, messageId,
+            "✅ *Welcome rasmi o'chirildi!*\n\nRasm endi ko'rsatilmaydi.",
+            createBackToMenuButton()
+        );
+    }
+    
+    // ========== Stats Header Actions ==========
+    
+    /**
+     * Start editing stats header text
+     */
+    private void startEditStatsText(Long chatId, Integer messageId) {
+        userStates.put(chatId, "awaiting_stats_header");
+        
+        String currentText = messageTemplateService.getText(MessageKey.STATS_HEADER);
+        if (currentText == null || currentText.isEmpty()) {
+            currentText = "O'rnatilmagan";
         }
+        
+        editMessage(chatId, messageId,
+            String.format(
+                "📝 *Statistika sarlavhasini o'zgartirish*\n\n" +
+                "📝 *Hozirgi matn:*\n```\n%s\n```\n\n" +
+                "Yangi matnni yuboring:",
+                currentText
+            ),
+            createCancelButton()
+        );
+    }
+    
+    /**
+     * Start editing stats header image
+     */
+    private void startEditStatsImage(Long chatId, Integer messageId) {
+        userStates.put(chatId, "awaiting_stats_image");
+        
+        // Delete menu message
+        deleteMessage(chatId, messageId);
+        
+        // Show current image if exists
+        messageTemplateService.getImagePath(MessageKey.STATS_HEADER).ifPresent(imagePath -> {
+            try {
+                sendPhotoFromFile(chatId, imagePath, "🖼 *Hozirgi rasm:*");
+            } catch (Exception e) {
+                log.error("Error sending current stats header image", e);
+            }
+        });
+        
+        sendMessage(chatId,
+            "🖼 *Statistika rasmini o'zgartirish*\n\n" +
+            "Yangi rasmni yuboring (foto yoki fayl ko'rinishida):\n\n" +
+            "*Eslatma:* Sifatli rasm uchun faylni siqilmagan holda yuboring (Document).",
+            createCancelButton()
+        );
+    }
+    
+    /**
+     * Confirm delete stats header image
+     */
+    private void confirmDeleteStatsImage(Long chatId, Integer messageId) {
+        // Delete old image file if exists
+        messageTemplateService.getImagePath(MessageKey.STATS_HEADER).ifPresent(oldPath -> {
+            try {
+                String fullOldPath = getFullImagePath(oldPath);
+                Files.deleteIfExists(Paths.get(fullOldPath));
+                log.info("Deleted stats header image: {}", fullOldPath);
+            } catch (IOException e) {
+                log.error("Failed to delete old image file", e);
+            }
+        });
+        
+        messageTemplateService.updateImagePath(MessageKey.STATS_HEADER, "");
+        
+        editMessage(chatId, messageId,
+            "✅ *Statistika rasmi o'chirildi!*\n\nRasm endi ko'rsatilmaydi.",
+            createBackToMenuButton()
+        );
     }
     
     /**
@@ -1078,7 +1311,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             throw new IllegalStateException("Referral bot not set. Cannot send messages to users.");
         }
         
-        String welcomeText = settingsService.getWelcomeMessageText();
+        String welcomeText = messageTemplateService.getText(MessageKey.WELCOME_MESSAGE);
         
         SendMessage message = new SendMessage();
         message.setChatId(targetChatId.toString());
@@ -1102,12 +1335,18 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     }
     
     /**
-     * Handle photo upload for stats header image
+     * Handle photo upload for message template images
      */
     private void handlePhotoUpload(Long chatId, Message message) {
         String state = userStates.get(chatId);
         
-        if (state == null || !state.equals("awaiting_stats_header_image")) {
+        // Determine which template we're editing
+        MessageKey templateKey;
+        if ("awaiting_welcome_message".equals(state) || "awaiting_welcome_image".equals(state)) {
+            templateKey = MessageKey.WELCOME_MESSAGE;
+        } else if ("awaiting_stats_header".equals(state) || "awaiting_stats_image".equals(state)) {
+            templateKey = MessageKey.STATS_HEADER;
+        } else {
             sendMessage(chatId, "❌ Rasm kutilmayapti. Iltimos sozlamalar menyusidan boshqa harakatni tanlang.");
             return;
         }
@@ -1134,13 +1373,16 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             
             // Generate unique filename
             String fileName = "stats_header_" + System.currentTimeMillis() + ".jpg";
-            Path destinationPath = Paths.get(IMAGES_DIRECTORY + fileName);
+            String relativePath = IMAGES_RELATIVE_DIRECTORY + fileName;
+            String fullPath = getFullImagePath(relativePath);
+            Path destinationPath = Paths.get(fullPath);
             
             // Delete old image if exists
-            settingsService.getStatsHeaderImagePath().ifPresent(oldPath -> {
+            messageTemplateService.getImagePath(templateKey).ifPresent(oldPath -> {
                 try {
-                    Files.deleteIfExists(Paths.get(oldPath));
-                    log.info("Deleted old stats header image: {}", oldPath);
+                    String fullOldPath = getFullImagePath(oldPath);
+                    Files.deleteIfExists(Paths.get(fullOldPath));
+                    log.info("Deleted old image for {}: {}", templateKey, fullOldPath);
                 } catch (IOException e) {
                     log.error("Failed to delete old image file", e);
                 }
@@ -1149,16 +1391,18 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             // Move file to permanent location
             Files.move(downloadedFile.toPath(), destinationPath, StandardCopyOption.REPLACE_EXISTING);
             
-            // Save path to database
-            String savedPath = destinationPath.toString();
-            settingsService.setStatsHeaderImagePath(savedPath);
+            // Save relative path to database
+            messageTemplateService.updateImagePath(templateKey, relativePath);
             
-            sendMessage(chatId, String.format("✅ *Statistika rasmi o'zgartirildi!*\n\nFayl saqlandi: `%s`", fileName), createBackToMenuButton());
+            String successMessage = templateKey == MessageKey.WELCOME_MESSAGE 
+                ? "✅ *Welcome rasmi o'zgartirildi!*\n\nFayl saqlandi: `%s`"
+                : "✅ *Statistika rasmi o'zgartirildi!*\n\nFayl saqlandi: `%s`";
+            sendMessage(chatId, String.format(successMessage, fileName), createBackToMenuButton());
             
             // Clear state
             userStates.remove(chatId);
             
-            log.info("Stats header image uploaded successfully: {}", savedPath);
+            log.info("Stats header image uploaded successfully: {} -> {}", relativePath, fullPath);
             
         } catch (Exception e) {
             log.error("Error handling photo upload", e);
@@ -1167,12 +1411,18 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     }
     
     /**
-     * Handle document upload for stats header image (uncompressed files)
+     * Handle document upload for message template images (uncompressed files)
      */
     private void handleDocumentUpload(Long chatId, Message message) {
         String state = userStates.get(chatId);
         
-        if (state == null || !state.equals("awaiting_stats_header_image")) {
+        // Determine which template we're editing
+        MessageKey templateKey;
+        if ("awaiting_welcome_message".equals(state) || "awaiting_welcome_image".equals(state)) {
+            templateKey = MessageKey.WELCOME_MESSAGE;
+        } else if ("awaiting_stats_header".equals(state) || "awaiting_stats_image".equals(state)) {
+            templateKey = MessageKey.STATS_HEADER;
+        } else {
             sendMessage(chatId, "❌ Rasm kutilmayapti. Iltimos sozlamalar menyusidan boshqa harakatni tanlang.");
             return;
         }
@@ -1210,13 +1460,16 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             
             // Generate unique filename
             String savedFileName = "stats_header_" + System.currentTimeMillis() + "." + extension;
-            Path destinationPath = Paths.get(IMAGES_DIRECTORY + savedFileName);
+            String relativePath = IMAGES_RELATIVE_DIRECTORY + savedFileName;
+            String fullPath = getFullImagePath(relativePath);
+            Path destinationPath = Paths.get(fullPath);
             
             // Delete old image if exists
-            settingsService.getStatsHeaderImagePath().ifPresent(oldPath -> {
+            messageTemplateService.getImagePath(templateKey).ifPresent(oldPath -> {
                 try {
-                    Files.deleteIfExists(Paths.get(oldPath));
-                    log.info("Deleted old stats header image: {}", oldPath);
+                    String fullOldPath = getFullImagePath(oldPath);
+                    Files.deleteIfExists(Paths.get(fullOldPath));
+                    log.info("Deleted old image for {}: {}", templateKey, fullOldPath);
                 } catch (IOException e) {
                     log.error("Failed to delete old image file", e);
                 }
@@ -1225,16 +1478,18 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             // Move file to permanent location
             Files.move(downloadedFile.toPath(), destinationPath, StandardCopyOption.REPLACE_EXISTING);
             
-            // Save path to database
-            String savedPath = destinationPath.toString();
-            settingsService.setStatsHeaderImagePath(savedPath);
+            // Save relative path to database
+            messageTemplateService.updateImagePath(templateKey, relativePath);
             
-            sendMessage(chatId, String.format("✅ *Statistika rasmi o'zgartirildi!*\n\nFayl saqlandi: `%s`", savedFileName), createBackToMenuButton());
+            String successMessage = templateKey == MessageKey.WELCOME_MESSAGE 
+                ? "✅ *Welcome rasmi o'zgartirildi!*\n\nFayl saqlandi: `%s`"
+                : "✅ *Statistika rasmi o'zgartirildi!*\n\nFayl saqlandi: `%s`";
+            sendMessage(chatId, String.format(successMessage, savedFileName), createBackToMenuButton());
             
             // Clear state
             userStates.remove(chatId);
             
-            log.info("Stats header image (document) uploaded successfully: {}", savedPath);
+            log.info("Stats header image (document) uploaded successfully: {} -> {}", relativePath, fullPath);
             
         } catch (Exception e) {
             log.error("Error handling document upload", e);
@@ -1349,18 +1604,21 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     }
     
     /**
-     * Send photo from file with caption
+     * Send photo from file with caption (accepts relative or absolute path)
      */
     private void sendPhotoFromFile(Long chatId, String filePath, String caption) throws TelegramApiException {
+        // Convert relative path to full path if needed
+        String fullPath = getFullImagePath(filePath);
+        
         SendPhoto photo = new SendPhoto();
         photo.setChatId(chatId.toString());
-        photo.setPhoto(new InputFile(new File(filePath)));
+        photo.setPhoto(new InputFile(new File(fullPath)));
         if (caption != null && !caption.isEmpty()) {
             photo.setCaption(caption);
             photo.setParseMode("Markdown");
         }
         execute(photo);
-        log.info("Sent photo from file to chatId={}: {}", chatId, filePath);
+        log.info("Sent photo from file to chatId={}: {} (full: {})", chatId, filePath, fullPath);
     }
     
     /**

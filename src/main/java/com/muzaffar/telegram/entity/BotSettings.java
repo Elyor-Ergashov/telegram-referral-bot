@@ -26,14 +26,6 @@ public class BotSettings {
     @Column(nullable = false)
     private String privateChannelLink;
     
-    @Column(columnDefinition = "TEXT")
-    private String welcomeMessageText;
-    
-    @Column(columnDefinition = "TEXT")
-    private String statsHeaderText;
-    
-    private String statsHeaderImagePath;
-    
     private String description;
     
     @Column(nullable = false)
