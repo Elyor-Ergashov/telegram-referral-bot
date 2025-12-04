@@ -1,5 +1,7 @@
 package com.muzaffar.telegram.bot;
 
+import static com.muzaffar.telegram.constants.BotConstants.*;
+
 import com.muzaffar.telegram.config.AppConfig;
 import com.muzaffar.telegram.config.BotConfig;
 import com.muzaffar.telegram.entity.Channel;
@@ -9,22 +11,20 @@ import com.muzaffar.telegram.service.BotSettingsService;
 import com.muzaffar.telegram.service.ChannelService;
 import com.muzaffar.telegram.service.MessageTemplateService;
 import com.muzaffar.telegram.service.UserService;
+import com.muzaffar.telegram.util.KeyboardBuilder;
+import com.muzaffar.telegram.util.TelegramBotUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.GetFile;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
-import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
-import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
-import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Document;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.PhotoSize;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import java.awt.image.BufferedImage;
@@ -47,51 +47,36 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     private final BotSettingsService settingsService;
     private final MessageTemplateService messageTemplateService;
     private final UserService userService;
+    private final com.muzaffar.telegram.service.MessageService messageService;
+    private final TelegramBotUtils botUtils;
     
     private ReferralTelegramBot referralBot;
     
     private final Map<Long, String> userStates = new HashMap<>();
     private final Map<Long, Map<String, String>> userData = new HashMap<>();
     
-    private static final String IMAGES_RELATIVE_DIRECTORY = "bot_images/stats_headers/";
-    
-    private static final long MAX_FILE_SIZE_MB = 5;
-    private static final long MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-    
     public AdminTelegramBot(BotConfig botConfig, AppConfig appConfig,
                            ChannelService channelService, BotSettingsService settingsService,
-                           MessageTemplateService messageTemplateService, UserService userService) {
+                           MessageTemplateService messageTemplateService, UserService userService,
+                           com.muzaffar.telegram.service.MessageService messageService,
+                           TelegramBotUtils botUtils) {
         super(botConfig.getAdminBot().getToken());
         this.botConfig = botConfig;
         this.appConfig = appConfig;
         this.channelService = channelService;
+        this.botUtils = botUtils;
         this.settingsService = settingsService;
         this.messageTemplateService = messageTemplateService;
         this.userService = userService;
+        this.messageService = messageService;
         
-        // Create images directory if it doesn't exist
         try {
-            String fullPath = getFullImagePath("");
+            String fullPath = botUtils.getFullImagePath("");
             Files.createDirectories(Paths.get(fullPath));
             log.info("Stats header images directory created/verified: {}", fullPath);
         } catch (IOException e) {
             log.error("Failed to create images directory", e);
         }
-    }
-    
-    /**
-     * Get full image path by combining base path with relative path
-     */
-    private String getFullImagePath(String relativePath) {
-        String basePath = appConfig.getImages().getBasePath();
-        if (basePath == null || basePath.isEmpty()) {
-            return relativePath;
-        }
-        // Ensure base path ends with separator
-        if (!basePath.endsWith("/") && !basePath.endsWith("\\")) {
-            basePath += File.separator;
-        }
-        return basePath + relativePath.replace("/", File.separator);
     }
     
     /**
@@ -122,7 +107,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                     String text = message.getText();
                     log.info("Admin message from chatId={}: {}", chatId, text);
                     
-                    if (text.equals("/start") || text.equals("/menu")) {
+                    if (text.equals(START_COMMAND) || text.equals(MENU_COMMAND)) {
                         showMainMenu(chatId);
                     } else {
                         handleTextInput(chatId, text, message.getMessageId());
@@ -159,26 +144,12 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         message.setText("👨‍💼 *Admin Panel*\n\nBoshqaruv panelidan foydalaning:");
         message.setParseMode("Markdown");
         
-        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-        
-        InlineKeyboardButton channelBtn = new InlineKeyboardButton();
-        channelBtn.setText("📺 Kanallarni boshqarish");
-        channelBtn.setCallbackData("menu_channels");
-        
-        InlineKeyboardButton settingsBtn = new InlineKeyboardButton();
-        settingsBtn.setText("⚙️ Sozlamalar");
-        settingsBtn.setCallbackData("menu_settings");
-        
-        InlineKeyboardButton broadcastBtn = new InlineKeyboardButton();
-        broadcastBtn.setText("📢 Xabar yuborish");
-        broadcastBtn.setCallbackData("menu_broadcast");
-        
-        rows.add(List.of(channelBtn));
-        rows.add(List.of(settingsBtn));
-        rows.add(List.of(broadcastBtn));
-        
-        keyboard.setKeyboard(rows);
+        InlineKeyboardMarkup keyboard = new KeyboardBuilder()
+            .addButton("📺 Kanallarni boshqarish", CALLBACK_MENU_CHANNELS)
+            .newRow()
+            .addButton("⚙️ Sozlamalar", CALLBACK_MENU_SETTINGS)
+            .addButton("📢 Xabar yuborish", CALLBACK_MENU_BROADCAST)
+            .build();
         message.setReplyMarkup(keyboard);
         
         try {
@@ -198,35 +169,15 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         message.setText("📺 *Kanallarni boshqarish*\n\nKerakli amalni tanlang:");
         message.setParseMode("Markdown");
         
-        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-        
-        // Add channel button
-        InlineKeyboardButton addBtn = new InlineKeyboardButton();
-        addBtn.setText("➕ Kanal qo'shish");
-        addBtn.setCallbackData("channel_add");
-        
-        // List channels button
-        InlineKeyboardButton listBtn = new InlineKeyboardButton();
-        listBtn.setText("📋 Kanallar ro'yxati");
-        listBtn.setCallbackData("channel_list");
-        
-        // Remove channel button
-        InlineKeyboardButton removeBtn = new InlineKeyboardButton();
-        removeBtn.setText("🗑 Kanalni o'chirish");
-        removeBtn.setCallbackData("channel_remove");
-        
-        // Back button
-        InlineKeyboardButton backBtn = new InlineKeyboardButton();
-        backBtn.setText("« Orqaga");
-        backBtn.setCallbackData("menu_main");
-        
-        rows.add(List.of(addBtn));
-        rows.add(List.of(listBtn));
-        rows.add(List.of(removeBtn));
-        rows.add(List.of(backBtn));
-        
-        keyboard.setKeyboard(rows);
+        InlineKeyboardMarkup keyboard = new KeyboardBuilder()
+            .addButton("➕ Kanal qo'shish", CALLBACK_CHANNEL_ADD)
+            .newRow()
+            .addButton("📋 Kanallar ro'yxati", CALLBACK_CHANNEL_LIST)
+            .newRow()
+            .addButton("🗑 Kanalni o'chirish", CALLBACK_CHANNEL_REMOVE)
+            .newRow()
+            .addButton("« Orqaga", CALLBACK_MENU_MAIN)
+            .build();
         message.setReplyMarkup(keyboard);
         
         try {
@@ -250,41 +201,17 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                 "🔗 Kerakli amallarni tanlang:");
         message.setParseMode("Markdown");
         
-        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-        
-        // Set referrals button
-        InlineKeyboardButton setRefBtn = new InlineKeyboardButton();
-        setRefBtn.setText("🔢 Referallar sonini o'zgartirish");
-        setRefBtn.setCallbackData("settings_set_referrals");
-        
-        // Set private channel link button
-        InlineKeyboardButton setLinkBtn = new InlineKeyboardButton();
-        setLinkBtn.setText("🔗 Shaxsiy kanal havolasini o'zgartirish");
-        setLinkBtn.setCallbackData("settings_set_link");
-        
-        // Set welcome message button (text + image)
-        InlineKeyboardButton setWelcomeBtn = new InlineKeyboardButton();
-        setWelcomeBtn.setText("📝 Welcome xabarini o'zgartirish");
-        setWelcomeBtn.setCallbackData("settings_set_welcome");
-        
-        // Set stats header button (text + image)
-        InlineKeyboardButton setStatsTextBtn = new InlineKeyboardButton();
-        setStatsTextBtn.setText("📊 Statistika sarlavhasini o'zgartirish");
-        setStatsTextBtn.setCallbackData("settings_set_stats_text");
-        
-        // Back button
-        InlineKeyboardButton backBtn = new InlineKeyboardButton();
-        backBtn.setText("« Orqaga");
-        backBtn.setCallbackData("menu_main");
-        
-        rows.add(List.of(setRefBtn));
-        rows.add(List.of(setLinkBtn));
-        rows.add(List.of(setWelcomeBtn));
-        rows.add(List.of(setStatsTextBtn));
-        rows.add(List.of(backBtn));
-        
-        keyboard.setKeyboard(rows);
+        InlineKeyboardMarkup keyboard = new KeyboardBuilder()
+            .addButton("🔢 Referallar sonini o'zgartirish", CALLBACK_SETTINGS_SET_REFERRALS)
+            .newRow()
+            .addButton("🔗 Shaxsiy kanal havolasini o'zgartirish", CALLBACK_SETTINGS_SET_PRIVATE_LINK)
+            .newRow()
+            .addButton("📝 Information xabarini o'zgartirish", CALLBACK_SETTINGS_INFORMATION)
+            .newRow()
+            .addButton("📊 Statistika sarlavhasini o'zgartirish", CALLBACK_SETTINGS_SET_STATS_TEXT)
+            .newRow()
+            .addButton("« Orqaga", CALLBACK_MENU_MAIN)
+            .build();
         message.setReplyMarkup(keyboard);
         
         try {
@@ -303,34 +230,18 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         message.setMessageId(messageId);
         message.setText(
             "📢 *Xabar yuborish*\n\n" +
-            "Welcome xabarini foydalanuvchilarga yuborish:\n\n" +
+            "Information xabarini foydalanuvchilarga yuborish:\n\n" +
             "Quyidagi variantlardan birini tanlang:"
         );
         message.setParseMode("Markdown");
         
-        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-        
-        // Send to all users button
-        InlineKeyboardButton sendAllBtn = new InlineKeyboardButton();
-        sendAllBtn.setText("📤 Barcha foydalanuvchilarga");
-        sendAllBtn.setCallbackData("broadcast_welcome_all");
-        
-        // Send to multiple users button
-        InlineKeyboardButton sendSingleBtn = new InlineKeyboardButton();
-        sendSingleBtn.setText("� Tanlangan foydalanuvchilarga");
-        sendSingleBtn.setCallbackData("broadcast_welcome_single");
-        
-        // Back button
-        InlineKeyboardButton backBtn = new InlineKeyboardButton();
-        backBtn.setText("« Orqaga");
-        backBtn.setCallbackData("menu_main");
-        
-        rows.add(List.of(sendAllBtn));
-        rows.add(List.of(sendSingleBtn));
-        rows.add(List.of(backBtn));
-        
-        keyboard.setKeyboard(rows);
+        InlineKeyboardMarkup keyboard = new KeyboardBuilder()
+            .addButton("📤 Barcha foydalanuvchilarga", CALLBACK_BROADCAST_INFORMATION_ALL)
+            .newRow()
+            .addButton("👥 Tanlangan foydalanuvchilarga", CALLBACK_BROADCAST_INFORMATION_SINGLE)
+            .newRow()
+            .addButton("« Orqaga", CALLBACK_MENU_MAIN)
+            .build();
         message.setReplyMarkup(keyboard);
         
         try {
@@ -351,68 +262,68 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         log.info("Admin callback from chatId={}: {}", chatId, data);
         
         switch (data) {
-            case "menu_main":
-            case "main_menu":
+            case CALLBACK_MENU_MAIN:
+            case CALLBACK_MAIN_MENU:
                 editToMainMenu(chatId, messageId);
                 break;
-            case "menu_channels":
+            case CALLBACK_MENU_CHANNELS:
                 showChannelMenu(chatId, messageId);
                 break;
-            case "menu_settings":
+            case CALLBACK_MENU_SETTINGS:
                 showSettingsMenu(chatId, messageId);
                 break;
-            case "menu_broadcast":
+            case CALLBACK_MENU_BROADCAST:
                 showBroadcastMenu(chatId, messageId);
                 break;
-            case "broadcast_welcome_all":
-                confirmBroadcastWelcomeAll(chatId, messageId);
+            case CALLBACK_BROADCAST_INFORMATION_ALL:
+                IonfirmBroadcastinformationAll(chatId, messageId);
                 break;
-            case "broadcast_welcome_all_confirm":
-                executeBroadcastWelcomeAll(chatId, messageId);
+            case CALLBACK_BROADCAST_INFORMATION_ALL_CONFIRM:
+                IxecuteBroadcastinformationAll(chatId, messageId);
                 break;
-            case "broadcast_welcome_single":
-                startBroadcastWelcomeSingle(chatId, messageId);
+            case CALLBACK_BROADCAST_INFORMATION_SINGLE:
+                ItartBroadcastinformationSingle(chatId, messageId);
                 break;
-            case "channel_add":
+            case CALLBACK_CHANNEL_ADD:
                 startAddChannel(chatId, messageId);
                 break;
-            case "channel_list":
+            case CALLBACK_CHANNEL_LIST:
                 showChannelList(chatId, messageId);
                 break;
-            case "channel_remove":
+            case CALLBACK_CHANNEL_REMOVE:
                 startRemoveChannel(chatId, messageId);
                 break;
-            case "settings_set_referrals":
+            case CALLBACK_SETTINGS_SET_REFERRALS:
                 startSetReferrals(chatId, messageId);
                 break;
-            case "settings_set_link":
+            case CALLBACK_SETTINGS_SET_PRIVATE_LINK:
                 startSetPrivateLink(chatId, messageId);
                 break;
-            case "settings_set_welcome":
-                startSetWelcomeMessage(chatId, messageId);
+            case CALLBACK_SETTINGS_INFORMATION:
+                ItartSetinformationMessage(chatId, messageId);
                 break;
-            case "settings_set_stats_text":
+            case CALLBACK_SETTINGS_SET_STATS_TEXT:
                 startSetStatsHeader(chatId, messageId);
                 break;
-            case "edit_welcome_text":
-                startEditWelcomeText(chatId, messageId);
+            case CALLBACK_EDIT_INFORMATION_TEXT:
+                ItartEditinformationText(chatId, messageId);
                 break;
-            case "edit_welcome_image":
-                startEditWelcomeImage(chatId, messageId);
+            case CALLBACK_EDIT_INFORMATION_IMAGE:
+                ItartEditinformationImage(chatId, messageId);
                 break;
-            case "delete_welcome_image":
-                confirmDeleteWelcomeImage(chatId, messageId);
+            case CALLBACK_DELETE_INFORMATION_IMAGE:
+                IonfirmDeleteinformationImage(chatId, messageId);
                 break;
-            case "edit_stats_text":
+            case CALLBACK_EDIT_STATS_TEXT:
                 startEditStatsText(chatId, messageId);
                 break;
-            case "edit_stats_image":
+            case CALLBACK_EDIT_STATS_IMAGE:
                 startEditStatsImage(chatId, messageId);
                 break;
-            case "delete_stats_image":
+            case CALLBACK_DELETE_STATS_IMAGE:
                 confirmDeleteStatsImage(chatId, messageId);
                 break;
-            case "cancel_operation":
+            case CALLBACK_CANCEL_OPERATION:
                 handleCancelOperation(chatId, messageId);
                 break;
             default:
@@ -446,26 +357,12 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         message.setText("👨‍💼 *Admin Panel*\n\nBoshqaruv panelidan foydalaning:");
         message.setParseMode("Markdown");
         
-        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-        
-        InlineKeyboardButton channelBtn = new InlineKeyboardButton();
-        channelBtn.setText("📺 Kanallarni boshqarish");
-        channelBtn.setCallbackData("menu_channels");
-        
-        InlineKeyboardButton settingsBtn = new InlineKeyboardButton();
-        settingsBtn.setText("⚙️ Sozlamalar");
-        settingsBtn.setCallbackData("menu_settings");
-        
-        InlineKeyboardButton broadcastBtn = new InlineKeyboardButton();
-        broadcastBtn.setText("📢 Xabar yuborish");
-        broadcastBtn.setCallbackData("menu_broadcast");
-        
-        rows.add(List.of(channelBtn));
-        rows.add(List.of(settingsBtn));
-        rows.add(List.of(broadcastBtn));
-        
-        keyboard.setKeyboard(rows);
+        InlineKeyboardMarkup keyboard = new KeyboardBuilder()
+            .addButton("📺 Kanallarni boshqarish", CALLBACK_MENU_CHANNELS)
+                .newRow()
+            .addButton("⚙️ Sozlamalar", CALLBACK_MENU_SETTINGS)
+            .addButton("📢 Xabar yuborish", CALLBACK_MENU_BROADCAST)
+            .build();
         message.setReplyMarkup(keyboard);
         
         try {
@@ -479,7 +376,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
      * Start add channel flow
      */
     private void startAddChannel(Long chatId, Integer messageId) {
-        userStates.put(chatId, "awaiting_channel_id");
+        userStates.put(chatId, STATE_AWAITING_CHANNEL_ID);
         userData.put(chatId, new HashMap<>());
         
         editMessage(chatId, messageId, "➕ *Kanal qo'shish*\n\nKanal ID sini yuboring:\n\n*Masalan:* `-1001234567890`", createCancelButton());
@@ -531,23 +428,14 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         message.setText("🗑 *Kanalni o'chirish*\n\nO'chirish uchun kanalni tanlang:");
         message.setParseMode("Markdown");
         
-        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-        
+        KeyboardBuilder builder = new KeyboardBuilder();
         for (Channel channel : channels) {
-            InlineKeyboardButton btn = new InlineKeyboardButton();
-            btn.setText(channel.getChannelName());
-            btn.setCallbackData("remove_channel_" + channel.getChannelId());
-            rows.add(List.of(btn));
+            builder.addRow(channel.getChannelName(), "remove_channel_" + channel.getChannelId());
         }
         
-        // Back button
-        InlineKeyboardButton backBtn = new InlineKeyboardButton();
-        backBtn.setText("« Orqaga");
-        backBtn.setCallbackData("menu_channels");
-        rows.add(List.of(backBtn));
-        
-        keyboard.setKeyboard(rows);
+        InlineKeyboardMarkup keyboard = builder
+            .addRow("« Orqaga", CALLBACK_MENU_CHANNELS)
+            .build();
         message.setReplyMarkup(keyboard);
         
         try {
@@ -574,7 +462,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
      * Start set referrals flow
      */
     private void startSetReferrals(Long chatId, Integer messageId) {
-        userStates.put(chatId, "awaiting_referral_count");
+        userStates.put(chatId, STATE_AWAITING_REFERRAL_COUNT);
         
         int currentCount = settingsService.getRequiredReferralCount();
         editMessage(chatId, messageId, 
@@ -595,28 +483,28 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         }
         
         switch (state) {
-            case "awaiting_channel_id":
+            case STATE_AWAITING_CHANNEL_ID:
                 handleChannelIdInput(chatId, text, messageId);
                 break;
-            case "awaiting_channel_name":
+            case STATE_AWAITING_CHANNEL_NAME:
                 handleChannelNameInput(chatId, text, messageId);
                 break;
-            case "awaiting_channel_username":
+            case STATE_AWAITING_CHANNEL_USERNAME:
                 handleChannelUsernameInput(chatId, text, messageId);
                 break;
-            case "awaiting_referral_count":
+            case STATE_AWAITING_REFERRAL_COUNT:
                 handleReferralCountInput(chatId, text, messageId);
                 break;
-            case "awaiting_private_link":
+            case STATE_AWAITING_PRIVATE_LINK:
                 handlePrivateLinkInput(chatId, text, messageId);
                 break;
-            case "awaiting_welcome_message":
-                handleWelcomeMessageInput(chatId, text, messageId);
+            case STATE_AWAITING_INFORMATION_MESSAGE:
+                IandleinformationMessageInput(chatId, text, messageId);
                 break;
-            case "awaiting_stats_header":
+            case STATE_AWAITING_STATS_HEADER:
                 handleStatsHeaderInput(chatId, text, messageId);
                 break;
-            case "awaiting_broadcast_user_id":
+            case STATE_AWAITING_BROADCAST_MESSAGE:
                 handleBroadcastUserIdInput(chatId, text, messageId);
                 break;
             default:
@@ -635,7 +523,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         Map<String, String> data = userData.get(chatId);
         data.put("channelId", channelId);
         
-        userStates.put(chatId, "awaiting_channel_name");
+        userStates.put(chatId, STATE_AWAITING_CHANNEL_NAME);
         sendMessage(chatId, "✅ Kanal ID qabul qilindi.\n\n📝 Endi kanal nomini yuboring:\n\n*Masalan:* `Teacher Muzaffar Math`", createCancelButton());
     }
     
@@ -647,7 +535,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         Map<String, String> data = userData.get(chatId);
         data.put("channelName", channelName);
         
-        userStates.put(chatId, "awaiting_channel_username");
+        userStates.put(chatId, STATE_AWAITING_CHANNEL_USERNAME);
         sendMessage(chatId, "✅ Kanal nomi qabul qilindi.\n\n👤 Endi kanal username ini yuboring (@ belgisisiz):\n\n*Masalan:* `TeacherMuzaffar`", createCancelButton());
     }
     
@@ -658,7 +546,6 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         deleteMessage(chatId, messageId);
         Map<String, String> data = userData.get(chatId);
         
-        // Remove @ if present
         if (channelUsername.startsWith("@")) {
             channelUsername = channelUsername.substring(1);
         }
@@ -678,7 +565,6 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         } catch (IllegalArgumentException e) {
             sendMessage(chatId, "❌ *Xatolik:*\n" + e.getMessage(), createBackToMenuButton());
         } finally {
-            // Clear state
             userStates.remove(chatId);
             userData.remove(chatId);
         }
@@ -701,7 +587,6 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             settingsService.setRequiredReferralCount(count);
             sendMessage(chatId, String.format("✅ *Referallar soni o'zgartirildi!*\n\nYangi qiymat: *%d*", count), createBackToMenuButton());
             
-            // Clear state
             userStates.remove(chatId);
         } catch (NumberFormatException e) {
             sendMessage(chatId, "❌ Noto'g'ri format. Faqat son kiriting.\n\nQaytadan kiriting:");
@@ -712,7 +597,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
      * Start set private channel link flow
      */
     private void startSetPrivateLink(Long chatId, Integer messageId) {
-        userStates.put(chatId, "awaiting_private_link");
+        userStates.put(chatId, STATE_AWAITING_PRIVATE_LINK);
         
         String currentLink = settingsService.getPrivateChannelLink().orElse("O'rnatilmagan");
         editMessage(chatId, messageId, 
@@ -724,12 +609,10 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
      * Handle private channel link input
      */
     private void handlePrivateLinkInput(Long chatId, String text, Integer messageId) {
-        // Delete the user's message to keep chat clean
         deleteMessage(chatId, messageId);
         
         String link = text.trim();
         
-        // Basic validation - check if it looks like a Telegram link
         if (!link.startsWith("https://t.me/") && !link.startsWith("http://t.me/")) {
             sendMessage(chatId, "❌ Noto'g'ri havola formati.\n\nTelegram havolasi bo'lishi kerak (https://t.me/...).\n\nQaytadan kiriting:");
             return;
@@ -738,35 +621,31 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         settingsService.setPrivateChannelLink(link);
         sendMessage(chatId, String.format("✅ *Shaxsiy kanal havolasi o'zgartirildi!*\n\nYangi havola: `%s`", link), createBackToMenuButton());
         
-        // Clear state
         userStates.remove(chatId);
     }
     
     /**
-     * Start set welcome message flow - show action menu
+     * Start set information message flow - show action menu
      */
-    private void startSetWelcomeMessage(Long chatId, Integer messageId) {
-        // Delete old menu message first
+    private void ItartSetinformationMessage(Long chatId, Integer messageId) {
         deleteMessage(chatId, messageId);
         
-        // Show current image if exists (will appear first)
-        messageTemplateService.getImagePath(MessageKey.WELCOME_MESSAGE).ifPresent(imagePath -> {
+        messageTemplateService.getImagePath(MessageKey.INFORMATION_MESSAGE).ifPresent(imagePath -> {
             try {
                 sendPhotoFromFile(chatId, imagePath, "🖼 *Hozirgi rasm:*");
             } catch (Exception e) {
-                log.error("Error sending current welcome image", e);
+                log.error("Error sending current information image", e);
             }
         });
         
-        String currentText = messageTemplateService.getText(MessageKey.WELCOME_MESSAGE);
-        boolean hasImage = messageTemplateService.getImagePath(MessageKey.WELCOME_MESSAGE).isPresent();
+        String currentText = messageTemplateService.getText(MessageKey.INFORMATION_MESSAGE);
+        boolean hasImage = messageTemplateService.getImagePath(MessageKey.INFORMATION_MESSAGE).isPresent();
         
-        // Create new menu message
         SendMessage message = new SendMessage();
         message.setChatId(chatId.toString());
         message.setText(
             String.format(
-                "📝 *Welcome xabarini o'zgartirish*\n\n" +
+                "📝 *Information xabarini o'zgartirish*\n\n" +
                 "📝 *Hozirgi matn:*\n```\n%s\n```\n\n" +
                 "🖼 *Rasm:* %s\n\n" +
                 "Kerakli amalni tanlang:",
@@ -776,50 +655,30 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         );
         message.setParseMode("Markdown");
         
-        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        KeyboardBuilder builder = new KeyboardBuilder()
+            .addRow("🔹 Matnni o'zgartirish", CALLBACK_EDIT_INFORMATION_TEXT)
+            .addRow(hasImage ? "🔹 Rasmni o'zgartirish" : "🔹 Rasm qo'shish", CALLBACK_EDIT_INFORMATION_IMAGE);
         
-        // Edit text button
-        InlineKeyboardButton editTextBtn = new InlineKeyboardButton();
-        editTextBtn.setText("🔹 Matnni o'zgartirish");
-        editTextBtn.setCallbackData("edit_welcome_text");
-        
-        // Edit/Add image button (text changes based on whether image exists)
-        InlineKeyboardButton editImageBtn = new InlineKeyboardButton();
-        editImageBtn.setText(hasImage ? "🔹 Rasmni o'zgartirish" : "🔹 Rasm qo'shish");
-        editImageBtn.setCallbackData("edit_welcome_image");
-        
-        // Delete image button (only if image exists)
-        InlineKeyboardButton deleteImageBtn = new InlineKeyboardButton();
-        deleteImageBtn.setText("🔹 Rasmni o'chirish");
-        deleteImageBtn.setCallbackData("delete_welcome_image");
-        
-        // Back button
-        InlineKeyboardButton backBtn = new InlineKeyboardButton();
-        backBtn.setText("« Orqaga");
-        backBtn.setCallbackData("menu_settings");
-        
-        rows.add(List.of(editTextBtn));
-        rows.add(List.of(editImageBtn));
         if (hasImage) {
-            rows.add(List.of(deleteImageBtn));
+            builder.addButton("🔹 Rasmni o'chirish", CALLBACK_DELETE_INFORMATION_IMAGE);
         }
-        rows.add(List.of(backBtn));
         
-        keyboard.setKeyboard(rows);
+        InlineKeyboardMarkup keyboard = builder
+            .addRow("« Orqaga", CALLBACK_MENU_SETTINGS)
+            .build();
         message.setReplyMarkup(keyboard);
         
         try {
             execute(message);
         } catch (TelegramApiException e) {
-            log.error("Error showing welcome message menu", e);
+            log.error("Error showing information message menu", e);
         }
     }
     
     /**
-     * Handle welcome message text input
+     * Handle information message text input
      */
-    private void handleWelcomeMessageInput(Long chatId, String text, Integer messageId) {
+    private void IandleinformationMessageInput(Long chatId, String text, Integer messageId) {
         deleteMessage(chatId, messageId);
         
         String trimmedText = text.trim();
@@ -829,8 +688,8 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             return;
         }
         
-        messageTemplateService.updateText(MessageKey.WELCOME_MESSAGE, trimmedText);
-        sendMessage(chatId, "✅ *Welcome xabari o'zgartirildi!*\n\nYangi foydalanuvchilar ushbu xabarni ko'rishadi.", createBackToMenuButton());
+        messageTemplateService.updateText(MessageKey.INFORMATION_MESSAGE, trimmedText);
+        sendMessage(chatId, "✅ *Information xabari o'zgartirildi!*\n\nYangi foydalanuvchilar ushbu xabarni ko'rishadi.", createBackToMenuButton());
         
         userStates.remove(chatId);
     }
@@ -839,10 +698,8 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
      * Start set stats header flow - show action menu
      */
     private void startSetStatsHeader(Long chatId, Integer messageId) {
-        // Delete old menu message first
         deleteMessage(chatId, messageId);
         
-        // Show current image if exists (will appear first)
         messageTemplateService.getImagePath(MessageKey.STATS_HEADER).ifPresent(imagePath -> {
             try {
                 sendPhotoFromFile(chatId, imagePath, "🖼 *Hozirgi rasm:*");
@@ -857,7 +714,6 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         }
         boolean hasImage = messageTemplateService.getImagePath(MessageKey.STATS_HEADER).isPresent();
         
-        // Create new menu message
         SendMessage message = new SendMessage();
         message.setChatId(chatId.toString());
         message.setText(
@@ -872,37 +728,17 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         );
         message.setParseMode("Markdown");
         
-        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        KeyboardBuilder builder = new KeyboardBuilder()
+            .addRow("🔹 Matnni o'zgartirish", CALLBACK_EDIT_STATS_TEXT)
+            .addRow(hasImage ? "🔹 Rasmni o'zgartirish" : "🔹 Rasm qo'shish", CALLBACK_EDIT_STATS_IMAGE);
         
-        // Edit text button
-        InlineKeyboardButton editTextBtn = new InlineKeyboardButton();
-        editTextBtn.setText("🔹 Matnni o'zgartirish");
-        editTextBtn.setCallbackData("edit_stats_text");
-        
-        // Edit/Add image button (text changes based on whether image exists)
-        InlineKeyboardButton editImageBtn = new InlineKeyboardButton();
-        editImageBtn.setText(hasImage ? "🔹 Rasmni o'zgartirish" : "🔹 Rasm qo'shish");
-        editImageBtn.setCallbackData("edit_stats_image");
-        
-        // Delete image button (only if image exists)
-        InlineKeyboardButton deleteImageBtn = new InlineKeyboardButton();
-        deleteImageBtn.setText("🔹 Rasmni o'chirish");
-        deleteImageBtn.setCallbackData("delete_stats_image");
-        
-        // Back button
-        InlineKeyboardButton backBtn = new InlineKeyboardButton();
-        backBtn.setText("« Orqaga");
-        backBtn.setCallbackData("menu_settings");
-        
-        rows.add(List.of(editTextBtn));
-        rows.add(List.of(editImageBtn));
         if (hasImage) {
-            rows.add(List.of(deleteImageBtn));
+            builder.addButton("🔹 Rasmni o'chirish", CALLBACK_DELETE_STATS_IMAGE);
         }
-        rows.add(List.of(backBtn));
         
-        keyboard.setKeyboard(rows);
+        InlineKeyboardMarkup keyboard = builder
+            .addRow("« Orqaga", CALLBACK_MENU_SETTINGS)
+            .build();
         message.setReplyMarkup(keyboard);
         
         try {
@@ -931,19 +767,19 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         userStates.remove(chatId);
     }
     
-    // ========== Welcome Message Actions ==========
+    // ========== Information Message Actions ==========
     
     /**
-     * Start editing welcome text
+     * Start editing information text
      */
-    private void startEditWelcomeText(Long chatId, Integer messageId) {
-        userStates.put(chatId, "awaiting_welcome_message");
+    private void ItartEditinformationText(Long chatId, Integer messageId) {
+        userStates.put(chatId, STATE_AWAITING_INFORMATION_MESSAGE);
         
-        String currentText = messageTemplateService.getText(MessageKey.WELCOME_MESSAGE);
+        String currentText = messageTemplateService.getText(MessageKey.INFORMATION_MESSAGE);
         
         editMessage(chatId, messageId,
             String.format(
-                "📝 *Welcome matnini o'zgartirish*\n\n" +
+                "📝 *Information matnini o'zgartirish*\n\n" +
                 "📝 *Hozirgi matn:*\n```\n%s\n```\n\n" +
                 "Yangi matnni yuboring:\n\n" +
                 "*Eslatma:* Markdown formatidan foydalanishingiz mumkin (*bold*, _italic_, `code`)",
@@ -954,25 +790,23 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     }
     
     /**
-     * Start editing welcome image
+     * Start editing information image
      */
-    private void startEditWelcomeImage(Long chatId, Integer messageId) {
-        userStates.put(chatId, "awaiting_welcome_image");
+    private void ItartEditinformationImage(Long chatId, Integer messageId) {
+        userStates.put(chatId, STATE_AWAITING_INFORMATION_IMAGE);
         
-        // Delete menu message
         deleteMessage(chatId, messageId);
         
-        // Show current image if exists
-        messageTemplateService.getImagePath(MessageKey.WELCOME_MESSAGE).ifPresent(imagePath -> {
+        messageTemplateService.getImagePath(MessageKey.INFORMATION_MESSAGE).ifPresent(imagePath -> {
             try {
                 sendPhotoFromFile(chatId, imagePath, "🖼 *Hozirgi rasm:*");
             } catch (Exception e) {
-                log.error("Error sending current welcome image", e);
+                log.error("Error sending current information image", e);
             }
         });
         
         sendMessage(chatId,
-            "🖼 *Welcome rasmini o'zgartirish*\n\n" +
+            "🖼 *Information rasmini o'zgartirish*\n\n" +
             "Yangi rasmni yuboring (foto yoki fayl ko'rinishida):\n\n" +
             "*Eslatma:* Sifatli rasm uchun faylni siqilmagan holda yuboring (Document).",
             createCancelButton()
@@ -980,24 +814,23 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     }
     
     /**
-     * Confirm delete welcome image
+     * Confirm delete information image
      */
-    private void confirmDeleteWelcomeImage(Long chatId, Integer messageId) {
-        // Delete old image file if exists
-        messageTemplateService.getImagePath(MessageKey.WELCOME_MESSAGE).ifPresent(oldPath -> {
+    private void IonfirmDeleteinformationImage(Long chatId, Integer messageId) {
+        messageTemplateService.getImagePath(MessageKey.INFORMATION_MESSAGE).ifPresent(oldPath -> {
             try {
-                String fullOldPath = getFullImagePath(oldPath);
+                String fullOldPath = botUtils.getFullImagePath(oldPath);
                 Files.deleteIfExists(Paths.get(fullOldPath));
-                log.info("Deleted welcome image: {}", fullOldPath);
+                log.info("Deleted information image: {}", fullOldPath);
             } catch (IOException e) {
                 log.error("Failed to delete old image file", e);
             }
         });
         
-        messageTemplateService.updateImagePath(MessageKey.WELCOME_MESSAGE, "");
+        messageTemplateService.updateImagePath(MessageKey.INFORMATION_MESSAGE, "");
         
         editMessage(chatId, messageId,
-            "✅ *Welcome rasmi o'chirildi!*\n\nRasm endi ko'rsatilmaydi.",
+            "✅ *Information rasmi o'chirildi!*\n\nRasm endi ko'rsatilmaydi.",
             createBackToMenuButton()
         );
     }
@@ -1008,7 +841,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
      * Start editing stats header text
      */
     private void startEditStatsText(Long chatId, Integer messageId) {
-        userStates.put(chatId, "awaiting_stats_header");
+        userStates.put(chatId, STATE_AWAITING_STATS_HEADER);
         
         String currentText = messageTemplateService.getText(MessageKey.STATS_HEADER);
         if (currentText == null || currentText.isEmpty()) {
@@ -1030,12 +863,10 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
      * Start editing stats header image
      */
     private void startEditStatsImage(Long chatId, Integer messageId) {
-        userStates.put(chatId, "awaiting_stats_image");
+        userStates.put(chatId, STATE_AWAITING_STATS_IMAGE);
         
-        // Delete menu message
         deleteMessage(chatId, messageId);
         
-        // Show current image if exists
         messageTemplateService.getImagePath(MessageKey.STATS_HEADER).ifPresent(imagePath -> {
             try {
                 sendPhotoFromFile(chatId, imagePath, "🖼 *Hozirgi rasm:*");
@@ -1056,10 +887,9 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
      * Confirm delete stats header image
      */
     private void confirmDeleteStatsImage(Long chatId, Integer messageId) {
-        // Delete old image file if exists
         messageTemplateService.getImagePath(MessageKey.STATS_HEADER).ifPresent(oldPath -> {
             try {
-                String fullOldPath = getFullImagePath(oldPath);
+                String fullOldPath = botUtils.getFullImagePath(oldPath);
                 Files.deleteIfExists(Paths.get(fullOldPath));
                 log.info("Deleted stats header image: {}", fullOldPath);
             } catch (IOException e) {
@@ -1076,9 +906,9 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     }
     
     /**
-     * Confirm broadcast welcome message to all users
+     * Confirm broadcast information message to all users
      */
-    private void confirmBroadcastWelcomeAll(Long chatId, Integer messageId) {
+    private void IonfirmBroadcastinformationAll(Long chatId, Integer messageId) {
         long totalUsers = userService.getTotalUserCount();
         
         EditMessageText message = new EditMessageText();
@@ -1086,28 +916,16 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         message.setMessageId(messageId);
         message.setText(
             String.format("📢 *Barcha foydalanuvchilarga yuborish*\n\n" +
-            "Welcome xabari *%d* ta foydalanuvchiga yuboriladi.\n\n" +
+            "Information xabari *%d* ta foydalanuvchiga yuboriladi.\n\n" +
             "Davom etishni xohlaysizmi?", totalUsers)
         );
         message.setParseMode("Markdown");
         
-        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-        
-        // Confirm button
-        InlineKeyboardButton confirmBtn = new InlineKeyboardButton();
-        confirmBtn.setText("✅ Ha, yuborish");
-        confirmBtn.setCallbackData("broadcast_welcome_all_confirm");
-        
-        // Cancel button
-        InlineKeyboardButton cancelBtn = new InlineKeyboardButton();
-        cancelBtn.setText("❌ Bekor qilish");
-        cancelBtn.setCallbackData("menu_broadcast");
-        
-        rows.add(List.of(confirmBtn));
-        rows.add(List.of(cancelBtn));
-        
-        keyboard.setKeyboard(rows);
+        InlineKeyboardMarkup keyboard = new KeyboardBuilder()
+            .addButton("✅ Ha, yuborish", CALLBACK_BROADCAST_INFORMATION_ALL_CONFIRM)
+            .newRow()
+            .addButton(BUTTON_CANCEL, CALLBACK_MENU_BROADCAST)
+            .build();
         message.setReplyMarkup(keyboard);
         
         try {
@@ -1118,16 +936,13 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     }
     
     /**
-     * Execute broadcast welcome message to all users
+     * Execute broadcast information message to all users
      */
-    private void executeBroadcastWelcomeAll(Long chatId, Integer messageId) {
-        // Delete confirmation message
+    private void IxecuteBroadcastinformationAll(Long chatId, Integer messageId) {
         deleteMessage(chatId, messageId);
         
-        // Send processing message
         sendMessage(chatId, "⏳ Xabarlar yuborilmoqda...");
         
-        // Get all users
         List<com.muzaffar.telegram.entity.User> users = userService.getAllUsers();
         
         int successCount = 0;
@@ -1135,19 +950,16 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         
         for (com.muzaffar.telegram.entity.User user : users) {
             try {
-                // Send welcome message with button
-                sendWelcomeMessageToUser(user.getChatId());
+                IendinformationMessageToUser(user.getChatId());
                 successCount++;
                 
-                // Small delay to avoid rate limits
-                Thread.sleep(50);
+                Thread.sleep(BROADCAST_DELAY_MS);
             } catch (Exception e) {
-                log.error("Failed to send welcome message to chatId={}", user.getChatId(), e);
+                log.error("Failed to send information message to chatId={}", user.getChatId(), e);
                 failCount++;
             }
         }
         
-        // Send result
         String resultText = String.format(
             "✅ *Yuborish yakunlandi!*\n\n" +
             "Muvaffaqiyatli: *%d*\n" +
@@ -1162,10 +974,10 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     }
     
     /**
-     * Start broadcast welcome to multiple users
+     * Start broadcast information to multiple users
      */
-    private void startBroadcastWelcomeSingle(Long chatId, Integer messageId) {
-        userStates.put(chatId, "awaiting_broadcast_user_id");
+    private void ItartBroadcastinformationSingle(Long chatId, Integer messageId) {
+        userStates.put(chatId, STATE_AWAITING_BROADCAST_MESSAGE);
         
         editMessage(chatId, messageId,
             "� *Tanlangan foydalanuvchilarga yuborish*\n\n" +
@@ -1183,12 +995,10 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     private void handleBroadcastUserIdInput(Long chatId, String text, Integer messageId) {
         deleteMessage(chatId, messageId);
         
-        // Parse comma-separated Chat IDs
         String[] chatIdStrings = text.trim().split("\\s*,\\s*");
         List<Long> targetChatIds = new ArrayList<>();
         List<String> invalidIds = new ArrayList<>();
         
-        // Validate each Chat ID
         for (String idStr : chatIdStrings) {
             try {
                 Long targetChatId = Long.parseLong(idStr.trim());
@@ -1198,7 +1008,6 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             }
         }
         
-        // If there are invalid IDs, show error
         if (!invalidIds.isEmpty()) {
             sendMessage(chatId, 
                 String.format("❌ *Noto'g'ri format:*\n\n%s\n\nFaqat raqam kiriting. Qaytadan urinib ko'ring.",
@@ -1206,13 +1015,11 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             return;
         }
         
-        // If no valid IDs, show error
         if (targetChatIds.isEmpty()) {
             sendMessage(chatId, "❌ Chat ID kiritilmadi. Qaytadan kiriting:");
             return;
         }
         
-        // Send progress message
         sendMessage(chatId, String.format("⏳ Xabar %d ta foydalanuvchiga yuborilmoqda...", targetChatIds.size()));
         
         int successCount = 0;
@@ -1222,10 +1029,8 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         List<Long> notFoundIds = new ArrayList<>();
         List<Long> failedIds = new ArrayList<>();
         
-        // Send to each user
         for (Long targetChatId : targetChatIds) {
             try {
-                // Check if user exists
                 Optional<User> user = userService.findByChatId(targetChatId);
                 if (user.isEmpty()) {
                     notFoundIds.add(targetChatId);
@@ -1233,22 +1038,19 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                     continue;
                 }
                 
-                // Send welcome message
-                sendWelcomeMessageToUser(targetChatId);
+                IendinformationMessageToUser(targetChatId);
                 successIds.add(targetChatId);
                 successCount++;
                 
-                // Small delay to avoid rate limits
-                Thread.sleep(50);
+                Thread.sleep(BROADCAST_DELAY_MS);
                 
             } catch (Exception e) {
-                log.error("Failed to send welcome message to chatId={}", targetChatId, e);
+                log.error("Failed to send information message to chatId={}", targetChatId, e);
                 failedIds.add(targetChatId);
                 failCount++;
             }
         }
         
-        // Build result message
         StringBuilder resultText = new StringBuilder("✅ *Yuborish yakunlandi!*\n\n");
         resultText.append(String.format("Muvaffaqiyatli: *%d*\n", successCount));
         
@@ -1261,7 +1063,6 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         
         resultText.append(String.format("Jami: *%d*\n\n", targetChatIds.size()));
         
-        // Add details for single user or show IDs for multiple
         if (targetChatIds.size() == 1) {
             if (successCount == 1) {
                 resultText.append(String.format("Chat ID: `%d`", successIds.get(0)));
@@ -1271,7 +1072,6 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                 resultText.append(String.format("❌ Xatolik: `%d`", failedIds.get(0)));
             }
         } else {
-            // For multiple users, show categorized lists if needed
             if (!notFoundIds.isEmpty() && notFoundIds.size() <= 5) {
                 resultText.append("\n*Topilmaganlar:*\n");
                 for (Long id : notFoundIds) {
@@ -1288,7 +1088,6 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         
         sendMessage(chatId, resultText.toString(), createBackToMenuButton());
         
-        // Clear state
         userStates.remove(chatId);
         
         log.info("Broadcast to multiple users completed: success={}, notFound={}, failed={}, total={}", 
@@ -1296,64 +1095,15 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     }
     
     /**
-     * Send welcome message with button to a user
-     * If an image exists for welcome message, sends it as photo with caption
+     * Send information message with button to a user
+     * If an image exists for information message, sends it as photo with caption
      */
-    private void sendWelcomeMessageToUser(Long targetChatId) throws TelegramApiException {
+    private void IendinformationMessageToUser(Long targetChatId) throws TelegramApiException {
         if (referralBot == null) {
             throw new IllegalStateException("Referral bot not set. Cannot send messages to users.");
         }
         
-        String welcomeText = messageTemplateService.getText(MessageKey.WELCOME_MESSAGE);
-        var imagePathOptional = messageTemplateService.getImagePath(MessageKey.WELCOME_MESSAGE);
-        
-        // Add "Takliflarim" button
-        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-        
-        InlineKeyboardButton myReferralsButton = new InlineKeyboardButton();
-        myReferralsButton.setText("👥 Takliflarim");
-        myReferralsButton.setCallbackData("my_referrals");
-        
-        rows.add(List.of(myReferralsButton));
-        keyboard.setKeyboard(rows);
-        
-        // Check if there's an image
-        if (imagePathOptional.isPresent()) {
-            String imagePath = imagePathOptional.get();
-            String fullImagePath = getFullImagePath(imagePath);
-            File imageFile = new File(fullImagePath);
-            
-            if (imageFile.exists()) {
-                // Send as photo with caption
-                SendPhoto photoMessage = new SendPhoto();
-                photoMessage.setChatId(targetChatId.toString());
-                photoMessage.setPhoto(new InputFile(imageFile));
-                photoMessage.setCaption(welcomeText);
-                photoMessage.setParseMode("Markdown");
-                photoMessage.setReplyMarkup(keyboard);
-                
-                referralBot.execute(photoMessage);
-                log.info("Sent welcome message with image to user chatId={}", targetChatId);
-            } else {
-                log.warn("Welcome image file not found: {}", fullImagePath);
-                // Fallback to text message
-                SendMessage message = new SendMessage();
-                message.setChatId(targetChatId.toString());
-                message.setText(welcomeText);
-                message.setParseMode("Markdown");
-                message.setReplyMarkup(keyboard);
-                referralBot.execute(message);
-            }
-        } else {
-            // No image, send as text message
-            SendMessage message = new SendMessage();
-            message.setChatId(targetChatId.toString());
-            message.setText(welcomeText);
-            message.setParseMode("Markdown");
-            message.setReplyMarkup(keyboard);
-            referralBot.execute(message);
-        }
+        messageService.sendInformationMessageWithImage(referralBot, targetChatId);
     }
     
     /**
@@ -1362,11 +1112,10 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     private void handlePhotoUpload(Long chatId, Message message) {
         String state = userStates.get(chatId);
         
-        // Determine which template we're editing
         MessageKey templateKey;
-        if ("awaiting_welcome_message".equals(state) || "awaiting_welcome_image".equals(state)) {
-            templateKey = MessageKey.WELCOME_MESSAGE;
-        } else if ("awaiting_stats_header".equals(state) || "awaiting_stats_image".equals(state)) {
+        if (STATE_AWAITING_INFORMATION_MESSAGE.equals(state) || STATE_AWAITING_INFORMATION_IMAGE.equals(state)) {
+            templateKey = MessageKey.INFORMATION_MESSAGE;
+        } else if (STATE_AWAITING_STATS_HEADER.equals(state) || STATE_AWAITING_STATS_IMAGE.equals(state)) {
             templateKey = MessageKey.STATS_HEADER;
         } else {
             sendMessage(chatId, "❌ Rasm kutilmayapti. Iltimos sozlamalar menyusidan boshqa harakatni tanlang.");
@@ -1374,7 +1123,6 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         }
         
         try {
-            // Get the highest resolution photo
             List<PhotoSize> photos = message.getPhoto();
             PhotoSize photo = photos.stream()
                 .max(Comparator.comparing(PhotoSize::getFileSize))
@@ -1385,32 +1133,26 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                 return;
             }
             
-            // Get file from Telegram
             GetFile getFileMethod = new GetFile();
             getFileMethod.setFileId(photo.getFileId());
             org.telegram.telegrambots.meta.api.objects.File file = execute(getFileMethod);
             
-            // Download file
             java.io.File downloadedFile = downloadFile(file);
             
-            // Validate and process image
             File processedFile = validateAndProcessImage(downloadedFile, chatId);
             if (processedFile == null) {
-                // Validation failed, error message already sent
                 downloadedFile.delete();
                 return;
             }
             
-            // Generate unique filename
             String fileName = "stats_header_" + System.currentTimeMillis() + ".jpg";
             String relativePath = IMAGES_RELATIVE_DIRECTORY + fileName;
-            String fullPath = getFullImagePath(relativePath);
+            String fullPath = botUtils.getFullImagePath(relativePath);
             Path destinationPath = Paths.get(fullPath);
             
-            // Delete old image if exists
             messageTemplateService.getImagePath(templateKey).ifPresent(oldPath -> {
                 try {
-                    String fullOldPath = getFullImagePath(oldPath);
+                    String fullOldPath = botUtils.getFullImagePath(oldPath);
                     Files.deleteIfExists(Paths.get(fullOldPath));
                     log.info("Deleted old image for {}: {}", templateKey, fullOldPath);
                 } catch (IOException e) {
@@ -1418,18 +1160,15 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                 }
             });
             
-            // Move validated file to permanent location
             Files.move(processedFile.toPath(), destinationPath, StandardCopyOption.REPLACE_EXISTING);
             
-            // Save relative path to database
             messageTemplateService.updateImagePath(templateKey, relativePath);
             
-            String successMessage = templateKey == MessageKey.WELCOME_MESSAGE 
-                ? "✅ *Welcome rasmi o'zgartirildi!*\n\nRasm muvaffaqiyatli saqlandi."
+            String successMessage = templateKey == MessageKey.INFORMATION_MESSAGE
+                ? "✅ *Information rasmi o'zgartirildi!*\n\nRasm muvaffaqiyatli saqlandi."
                 : "✅ *Statistika rasmi o'zgartirildi!*\n\nRasm muvaffaqiyatli saqlandi.";
             sendMessage(chatId, successMessage, createBackToMenuButton());
             
-            // Clear state
             userStates.remove(chatId);
             
             log.info("Image uploaded successfully: {} -> {}", relativePath, fullPath);
@@ -1446,11 +1185,10 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     private void handleDocumentUpload(Long chatId, Message message) {
         String state = userStates.get(chatId);
         
-        // Determine which template we're editing
         MessageKey templateKey;
-        if ("awaiting_welcome_message".equals(state) || "awaiting_welcome_image".equals(state)) {
-            templateKey = MessageKey.WELCOME_MESSAGE;
-        } else if ("awaiting_stats_header".equals(state) || "awaiting_stats_image".equals(state)) {
+        if (STATE_AWAITING_INFORMATION_MESSAGE.equals(state) || STATE_AWAITING_INFORMATION_IMAGE.equals(state)) {
+            templateKey = MessageKey.INFORMATION_MESSAGE;
+        } else if (STATE_AWAITING_STATS_HEADER.equals(state) || STATE_AWAITING_STATS_IMAGE.equals(state)) {
             templateKey = MessageKey.STATS_HEADER;
         } else {
             sendMessage(chatId, "❌ Rasm kutilmayapti. Iltimos sozlamalar menyusidan boshqa harakatni tanlang.");
@@ -1465,7 +1203,6 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                 return;
             }
             
-            // Verify it's an image file
             String mimeType = document.getMimeType();
             String fileName = document.getFileName();
             
@@ -1474,32 +1211,26 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                 return;
             }
             
-            // Get file from Telegram
             GetFile getFileMethod = new GetFile();
             getFileMethod.setFileId(document.getFileId());
             org.telegram.telegrambots.meta.api.objects.File file = execute(getFileMethod);
             
-            // Download file
             java.io.File downloadedFile = downloadFile(file);
             
-            // Validate and process image
             File processedFile = validateAndProcessImage(downloadedFile, chatId);
             if (processedFile == null) {
-                // Validation failed, error message already sent
                 downloadedFile.delete();
                 return;
             }
             
-            // Generate unique filename (always save as jpg after processing)
             String savedFileName = "stats_header_" + System.currentTimeMillis() + ".jpg";
             String relativePath = IMAGES_RELATIVE_DIRECTORY + savedFileName;
-            String fullPath = getFullImagePath(relativePath);
+            String fullPath = botUtils.getFullImagePath(relativePath);
             Path destinationPath = Paths.get(fullPath);
             
-            // Delete old image if exists
             messageTemplateService.getImagePath(templateKey).ifPresent(oldPath -> {
                 try {
-                    String fullOldPath = getFullImagePath(oldPath);
+                    String fullOldPath = botUtils.getFullImagePath(oldPath);
                     Files.deleteIfExists(Paths.get(fullOldPath));
                     log.info("Deleted old image for {}: {}", templateKey, fullOldPath);
                 } catch (IOException e) {
@@ -1507,18 +1238,15 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                 }
             });
             
-            // Move validated file to permanent location
             Files.move(processedFile.toPath(), destinationPath, StandardCopyOption.REPLACE_EXISTING);
             
-            // Save relative path to database
             messageTemplateService.updateImagePath(templateKey, relativePath);
             
-            String successMessage = templateKey == MessageKey.WELCOME_MESSAGE 
-                ? "✅ *Welcome rasmi o'zgartirildi!*\n\nRasm muvaffaqiyatli saqlandi."
+            String successMessage = templateKey == MessageKey.INFORMATION_MESSAGE
+                ? "✅ *Information rasmi o'zgartirildi!*\n\nRasm muvaffaqiyatli saqlandi."
                 : "✅ *Statistika rasmi o'zgartirildi!*\n\nRasm muvaffaqiyatli saqlandi.";
             sendMessage(chatId, successMessage, createBackToMenuButton());
             
-            // Clear state
             userStates.remove(chatId);
             
             log.info("Image (document) uploaded successfully: {} -> {}", relativePath, fullPath);
@@ -1554,59 +1282,31 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     }
     
     /**
-     * Check if user is admin
+     * Check if user is admin (delegates to TelegramBotUtils)
      */
     private boolean isAdmin(Long chatId) {
-        return appConfig.getAdmin().getChatIds().contains(chatId);
+        return botUtils.isAdmin(chatId);
     }
     
     /**
-     * Delete a message
+     * Delete a message (delegates to TelegramBotUtils)
      */
     private void deleteMessage(Long chatId, Integer messageId) {
-        try {
-            DeleteMessage deleteMessage = new DeleteMessage();
-            deleteMessage.setChatId(chatId.toString());
-            deleteMessage.setMessageId(messageId);
-            execute(deleteMessage);
-            log.debug("Deleted message {} from chatId={}", messageId, chatId);
-        } catch (TelegramApiException e) {
-            log.debug("Could not delete message {} from chatId={}: {}", messageId, chatId, e.getMessage());
-        }
+        botUtils.deleteMessage(this, chatId, messageId);
     }
     
     /**
      * Create inline keyboard with back to menu button
      */
     private InlineKeyboardMarkup createBackToMenuButton() {
-        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-        
-        InlineKeyboardButton menuBtn = new InlineKeyboardButton();
-        menuBtn.setText("📋 Menyu");
-        menuBtn.setCallbackData("main_menu");
-        
-        rows.add(List.of(menuBtn));
-        keyboard.setKeyboard(rows);
-        
-        return keyboard;
+        return KeyboardBuilder.singleButton(BUTTON_MENU, CALLBACK_MAIN_MENU);
     }
     
     /**
      * Create inline keyboard with cancel button
      */
     private InlineKeyboardMarkup createCancelButton() {
-        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-        
-        InlineKeyboardButton cancelBtn = new InlineKeyboardButton();
-        cancelBtn.setText("❌ Bekor qilish");
-        cancelBtn.setCallbackData("cancel_operation");
-        
-        rows.add(List.of(cancelBtn));
-        keyboard.setKeyboard(rows);
-        
-        return keyboard;
+        return KeyboardBuilder.singleButton(BUTTON_CANCEL, CALLBACK_CANCEL_OPERATION);
     }
     
     /**
@@ -1616,21 +1316,15 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
      */
     private File validateAndProcessImage(File sourceFile, Long chatId) {
         try {
-            // Check file size
             long fileSize = sourceFile.length();
             if (fileSize > MAX_FILE_SIZE_BYTES) {
-                sendMessage(chatId, String.format(
-                    "❌ *Fayl hajmi juda katta!*\n\n" +
-                    "Maksimal hajm: %d MB\n" +
-                    "Sizning faylingiz: %.2f MB\n\n" +
-                    "Iltimos, kichikroq fayl yuklang.",
-                    MAX_FILE_SIZE_MB,
-                    fileSize / (1024.0 * 1024.0)
-                ));
+                sendMessage(chatId,
+                    String.format("❌ *Fayl hajmi juda katta!*\n\nMaksimal hajm: *%d MB*\nSizning faylingiz: *%.2f MB*",
+                        MAX_FILE_SIZE_MB, fileSize / (1024.0 * 1024.0)),
+                    createBackToMenuButton());
                 return null;
             }
             
-            // Read image
             BufferedImage originalImage = ImageIO.read(sourceFile);
             if (originalImage == null) {
                 sendMessage(chatId, "❌ *Rasm faylini o'qib bo'lmadi!*\n\nIltimos, to'g'ri rasm formatida fayl yuklang (JPG, PNG).");
@@ -1652,73 +1346,60 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     }
     
     /**
-     * Send message
+     * Send message (delegates to TelegramBotUtils)
      */
     private void sendMessage(Long chatId, String text) {
         sendMessage(chatId, text, null);
     }
     
     /**
-     * Send message with keyboard
+     * Send message with keyboard (delegates to TelegramBotUtils)
      */
     private void sendMessage(Long chatId, String text, InlineKeyboardMarkup keyboard) {
-        try {
-            SendMessage message = new SendMessage();
-            message.setChatId(chatId.toString());
-            message.setText(text);
-            message.setParseMode("Markdown");
-            if (keyboard != null) {
-                message.setReplyMarkup(keyboard);
-            }
-            execute(message);
-            log.info("Sent admin message to chatId={}", chatId);
-        } catch (TelegramApiException e) {
-            log.error("Error sending admin message to chatId=" + chatId, e);
+        if (keyboard != null) {
+            botUtils.sendMessageWithKeyboard(this, chatId, text, keyboard);
+        } else {
+            botUtils.sendMessage(this, chatId, text);
         }
     }
     
     /**
-     * Send photo from file with caption (accepts relative or absolute path)
+     * Send photo from file with caption (delegates to TelegramBotUtils)
      */
     private void sendPhotoFromFile(Long chatId, String filePath, String caption) throws TelegramApiException {
-        // Convert relative path to full path if needed
-        String fullPath = getFullImagePath(filePath);
-        
-        SendPhoto photo = new SendPhoto();
-        photo.setChatId(chatId.toString());
-        photo.setPhoto(new InputFile(new File(fullPath)));
         if (caption != null && !caption.isEmpty()) {
-            photo.setCaption(caption);
-            photo.setParseMode("Markdown");
+            botUtils.sendPhotoWithCaption(this, chatId, filePath, caption);
+        } else {
+            botUtils.sendPhotoFromFile(this, chatId, filePath);
         }
-        execute(photo);
-        log.info("Sent photo from file to chatId={}: {} (full: {})", chatId, filePath, fullPath);
     }
     
     /**
-     * Edit message
+     * Edit message (delegates to TelegramBotUtils)
      */
     private void editMessage(Long chatId, Integer messageId, String text) {
         editMessage(chatId, messageId, text, null);
     }
     
     /**
-     * Edit message with keyboard
+     * Edit message with keyboard (delegates to TelegramBotUtils)
      */
     private void editMessage(Long chatId, Integer messageId, String text, InlineKeyboardMarkup keyboard) {
-        try {
-            EditMessageText message = new EditMessageText();
-            message.setChatId(chatId.toString());
-            message.setMessageId(messageId);
-            message.setText(text);
-            message.setParseMode("Markdown");
-            if (keyboard != null) {
+        botUtils.editMessage(this, chatId, messageId, text);
+        // Note: TelegramBotUtils.editMessage doesn't support keyboard parameter yet
+        // For now, handle keyboard case inline if needed
+        if (keyboard != null) {
+            try {
+                EditMessageText message = new EditMessageText();
+                message.setChatId(chatId.toString());
+                message.setMessageId(messageId);
+                message.setText(text);
+                message.setParseMode("Markdown");
                 message.setReplyMarkup(keyboard);
+                execute(message);
+            } catch (TelegramApiException e) {
+                log.error("Error editing message with keyboard", e);
             }
-            execute(message);
-            log.info("Edited admin message for chatId={}", chatId);
-        } catch (TelegramApiException e) {
-            log.error("Error editing admin message for chatId=" + chatId, e);
         }
     }
 }

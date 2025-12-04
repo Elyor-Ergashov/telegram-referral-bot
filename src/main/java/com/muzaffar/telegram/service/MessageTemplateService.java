@@ -107,11 +107,11 @@ public class MessageTemplateService {
      */
     @Transactional
     public void initializeDefaultTemplates() {
-        // Initialize WELCOME_MESSAGE
-        if (!repository.existsByMessageKey(MessageKey.WELCOME_MESSAGE)) {
-            MessageTemplate welcomeTemplate = new MessageTemplate();
-            welcomeTemplate.setMessageKey(MessageKey.WELCOME_MESSAGE);
-            welcomeTemplate.setText(
+        // Initialize INFORMATION_MESSAGE
+        if (!repository.existsByMessageKey(MessageKey.INFORMATION_MESSAGE)) {
+            MessageTemplate informationTemplate = new MessageTemplate();
+            informationTemplate.setMessageKey(MessageKey.INFORMATION_MESSAGE);
+            informationTemplate.setText(
                 "🎉 Assalomu alaykum!\n\n" +
                 "Matematikadan Milliy sertifikat imtihoniga bepul tayyorlanish imkoniyati!\n" +
                 "Va albatta siz uchun *1 ta bonus kitob* tayyorlab qo'ydim 📚✨\n\n" +
@@ -129,8 +129,8 @@ public class MessageTemplateService {
                 "(Havolani olish uchun Takliflarim tugmasini bosing...)\n\n" +
                 "📘 Asosiy menyuga xush kelibsiz!"
             );
-            repository.save(welcomeTemplate);
-            log.info("Initialized default WELCOME_MESSAGE template");
+            repository.save(informationTemplate);
+            log.info("Initialized default INFORMATION_MESSAGE template");
         }
         
         // Initialize STATS_HEADER

@@ -1,6 +1,9 @@
 package com.muzaffar.telegram.service;
 
 import com.muzaffar.telegram.enums.MessageKey;
+import com.muzaffar.telegram.util.KeyboardBuilder;
+
+import static com.muzaffar.telegram.constants.BotConstants.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,6 +20,7 @@ import java.util.List;
 public class MessageService {
     
     private final MessageTemplateService messageTemplateService;
+    private final com.muzaffar.telegram.util.TelegramBotUtils botUtils;
     
     /**
      * Create introduction message for first-time users
@@ -31,16 +35,8 @@ public class MessageService {
         );
         message.setParseMode("Markdown");
         
-        // Create START button
-        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-        
-        InlineKeyboardButton startButton = new InlineKeyboardButton();
-        startButton.setText("START");
-        startButton.setCallbackData("start_bot");
-        
-        rows.add(List.of(startButton));
-        keyboard.setKeyboard(rows);
+        // Create START button using KeyboardBuilder
+        InlineKeyboardMarkup keyboard = KeyboardBuilder.singleButton(BUTTON_START, CALLBACK_START_BOT);
         message.setReplyMarkup(keyboard);
         
         return message;
@@ -57,47 +53,23 @@ public class MessageService {
     }
     
     /**
-     * Create main welcome message with share button (sent after greeting) - uses dynamic text from database
+     * Create main information message with share button (sent after greeting) - uses dynamic text from database
      */
-    public SendMessage createMainWelcomeMessage(Long chatId) {
+    public SendMessage createMainInformationMessage(Long chatId) {
         SendMessage message = new SendMessage();
         message.setChatId(chatId.toString());
         
-        // Get welcome text from database
-        String text = messageTemplateService.getText(MessageKey.WELCOME_MESSAGE);
+        // Get information text from database
+        String text = messageTemplateService.getText(MessageKey.INFORMATION_MESSAGE);
         
         message.setText(text);
         message.setParseMode("Markdown");
         
-        // Create keyboard with "Takliflarim" button
-        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-        
-        InlineKeyboardButton myReferralsButton = new InlineKeyboardButton();
-        myReferralsButton.setText("👥 Takliflarim");
-        myReferralsButton.setCallbackData("my_referrals");
-        
-        rows.add(List.of(myReferralsButton));
-        keyboard.setKeyboard(rows);
+        // Create keyboard with "Takliflarim" button using KeyboardBuilder
+        InlineKeyboardMarkup keyboard = KeyboardBuilder.singleButton(BUTTON_MY_REFERRALS, CALLBACK_MY_REFERRALS);
         message.setReplyMarkup(keyboard);
         
         return message;
-    }
-    
-    /**
-     * Create welcome message for new user (text only, for backward compatibility)
-     */
-    public String createWelcomeMessage(String botUsername, String referralCode, int referralCount, int requiredCount) {
-        String referralLink = String.format("https://t.me/%s?start=%s", botUsername, referralCode);
-        
-        return String.format(
-            "🎉 *Referral botga xush kelibsiz!*\n\n" +
-            "👥 *Sizning referallaringiz:* %d/%d\n\n" +
-            "🔗 *Sizning referal havolangiz:*\n`%s`\n\n" +
-            "📢 Do'stlaringiz bilan havolangizni ulashing! *%d referal* to'plagandan so'ng, bizning maxsus shaxsiy kanalimizga kirish huquqiga ega bo'lasiz.\n\n" +
-            "💡 Jarayoningizni tekshirish uchun /stats dan foydalaning.",
-            referralCount, requiredCount, referralLink, requiredCount
-        );
     }
     
     /**
@@ -122,9 +94,8 @@ public class MessageService {
         }
         
         text.append("📊 *Sizning statistikangiz*\n\n");
-        text.append(String.format("📊 *Jami takliflaringiz:* %d (To'g'ridan-to'g'ri: %d, Bilvosita: %d)\n\n", 
+        text.append(String.format("👥 *Jami takliflaringiz:* %d (To'g'ridan-to'g'ri: %d, Bilvosita: %d)\n\n",
             totalInvites, totalReferralCount, indirectReferralCount));
-        text.append(String.format("👥 *Jami taklif qilganlar:* %d\n", totalReferralCount));
         text.append(String.format("✅ *Aktiv referallar:* %d\n", activeCount));
         
         if (leftCount > 0) {
@@ -147,13 +118,7 @@ public class MessageService {
         message.setText(text.toString());
         message.setParseMode("Markdown");
         
-        // Create share button
-        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-        
-        InlineKeyboardButton shareButton = new InlineKeyboardButton();
-        shareButton.setText("📤 Do'stlarimga ulashish");
-        
+        // Create share button using KeyboardBuilder
         String shareMessage = String.format(
             "Assalomu alaykum! Geometriya 0 dan yopiq guruhiga bepul kirish + bonus kitob olish uchun shu botga kiring 👉\n%s",
             referralLink
@@ -165,10 +130,7 @@ public class MessageService {
             java.net.URLEncoder.encode(shareMessage, java.nio.charset.StandardCharsets.UTF_8)
         );
         
-        shareButton.setUrl(shareUrl);
-        
-        rows.add(List.of(shareButton));
-        keyboard.setKeyboard(rows);
+        InlineKeyboardMarkup keyboard = KeyboardBuilder.singleUrlButton("📤 Do'stlarimga ulashish", shareUrl);
         message.setReplyMarkup(keyboard);
         
         return message;
@@ -227,16 +189,8 @@ public class MessageService {
         message.setText(text);
         message.setParseMode("Markdown");
         
-        // Add Takliflarim button
-        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-        
-        InlineKeyboardButton referralsButton = new InlineKeyboardButton();
-        referralsButton.setText("👥 Takliflarim");
-        referralsButton.setCallbackData("my_referrals");
-        
-        rows.add(List.of(referralsButton));
-        keyboard.setKeyboard(rows);
+        // Add Takliflarim button using KeyboardBuilder
+        InlineKeyboardMarkup keyboard = KeyboardBuilder.singleButton(BUTTON_MY_REFERRALS, CALLBACK_MY_REFERRALS);
         message.setReplyMarkup(keyboard);
         
         return message;
@@ -257,7 +211,7 @@ public class MessageService {
     }
     
     /**
-     * Create referral info message with share button (sent after main welcome)
+     * Create referral info message with share button (sent after main information)
      */
     public SendMessage createReferralInfoMessage(Long chatId, String botUsername, String referralCode) {
         SendMessage message = new SendMessage();
@@ -352,8 +306,8 @@ public class MessageService {
         
         // Add confirmation button
         InlineKeyboardButton confirmButton = new InlineKeyboardButton();
-        confirmButton.setText("✅ A'zo bo'ldim");
-        confirmButton.setCallbackData("verify_channels");
+        confirmButton.setText(BUTTON_I_JOINED);
+        confirmButton.setCallbackData(CALLBACK_VERIFY_CHANNELS);
         
         List<InlineKeyboardButton> confirmRow = new ArrayList<>();
         confirmRow.add(confirmButton);
@@ -379,7 +333,8 @@ public class MessageService {
     /**
      * Create message when user doesn't have enough active referrals with Takliflarim button
      */
-    public SendMessage createInsufficientActiveReferralsMessage(Long chatId, int activeCount, int leftCount, int requiredCount) {
+    public SendMessage createInsufficientActiveReferralsMessage(Long chatId, int totalReferralCount, int indirectReferralCount, 
+                                                                   int activeCount, int leftCount, int requiredCount) {
         SendMessage message = new SendMessage();
         message.setChatId(chatId.toString());
         
@@ -387,6 +342,8 @@ public class MessageService {
         
         StringBuilder text = new StringBuilder();
         text.append("⚠️ *Shaxsiy kanal uchun yetarli emas!*\n\n");
+        text.append(String.format("👥 *Jami takliflaringiz:* %d (To'g'ridan-to'g'ri: %d, Bilvosita: %d)\n\n", 
+            totalReferralCount + indirectReferralCount, totalReferralCount, indirectReferralCount));
         text.append(String.format("✅ *Aktiv referallar:* %d\n", activeCount));
         text.append(String.format("❌ *Kanaldan chiqib ketganlar:* %d\n", leftCount));
         text.append(String.format("🎯 *Kerak:* %d\n\n", requiredCount));
@@ -401,13 +358,41 @@ public class MessageService {
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         
         InlineKeyboardButton referralsButton = new InlineKeyboardButton();
-        referralsButton.setText("👥 Takliflarim");
-        referralsButton.setCallbackData("my_referrals");
+        referralsButton.setText(BUTTON_MY_REFERRALS);
+        referralsButton.setCallbackData(CALLBACK_MY_REFERRALS);
         
         rows.add(List.of(referralsButton));
         keyboard.setKeyboard(rows);
         message.setReplyMarkup(keyboard);
         
         return message;
+    }
+    
+    /**
+     * Send information message with optional image and "Takliflarim" button.
+     * This method handles both photo with caption and text-only messages.
+     * 
+     * @param bot The bot instance to use for sending
+     * @param chatId The chat ID to send to
+     */
+    public void sendInformationMessageWithImage(org.telegram.telegrambots.bots.TelegramLongPollingBot bot, Long chatId) {
+        try {
+            String informationText = messageTemplateService.getText(MessageKey.INFORMATION_MESSAGE);
+            var imagePathOptional = messageTemplateService.getImagePath(MessageKey.INFORMATION_MESSAGE);
+            
+            // Create keyboard with "Takliflarim" button
+            InlineKeyboardMarkup keyboard = KeyboardBuilder.singleButton(BUTTON_MY_REFERRALS, CALLBACK_MY_REFERRALS);
+            
+            // Check if there's an image
+            if (imagePathOptional.isPresent()) {
+                String imagePath = imagePathOptional.get();
+                botUtils.sendPhotoWithCaptionAndKeyboard(bot, chatId, imagePath, informationText, keyboard);
+            } else {
+                // No image, send as text message
+                botUtils.sendMessageWithKeyboard(bot, chatId, informationText, keyboard);
+            }
+        } catch (Exception e) {
+            log.error("Error sending information message with image to chatId={}", chatId, e);
+        }
     }
 }

@@ -11,7 +11,10 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "users", indexes = {
     @Index(name = "idx_chat_id", columnList = "chatId"),
-    @Index(name = "idx_referral_code", columnList = "referralCode")
+    @Index(name = "idx_referral_code", columnList = "referralCode"),
+    @Index(name = "idx_invited_by", columnList = "invited_by_user_id"),
+    @Index(name = "idx_created_at", columnList = "createdAt"),
+    @Index(name = "idx_referral_verification", columnList = "invited_by_user_id, hasVerifiedChannels, createdAt")
 })
 @Data
 @Builder

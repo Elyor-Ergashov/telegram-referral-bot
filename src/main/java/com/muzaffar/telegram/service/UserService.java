@@ -26,6 +26,13 @@ public class UserService {
     }
     
     /**
+     * Save or update a user
+     */
+    public User save(User user) {
+        return userRepository.save(user);
+    }
+    
+    /**
      * Find user by referral code
      */
     public Optional<User> findByReferralCode(String referralCode) {

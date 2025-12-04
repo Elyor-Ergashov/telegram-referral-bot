@@ -2,6 +2,8 @@ package com.muzaffar.telegram.bot;
 
 import com.muzaffar.telegram.config.AppConfig;
 import com.muzaffar.telegram.config.BotConfig;
+
+import static com.muzaffar.telegram.constants.BotConstants.*;
 import com.muzaffar.telegram.entity.Channel;
 import com.muzaffar.telegram.entity.User;
 import com.muzaffar.telegram.service.BotSettingsService;
@@ -67,14 +69,14 @@ public class ReferralWebhookBot extends TelegramWebhookBot {
         log.info("Received webhook message from chatId={}: {}", chatId, text);
         
         try {
-            if (text.startsWith("/start")) {
+            if (text.startsWith(START_COMMAND)) {
                 return handleStartCommand(message);
-            } else if (text.equals("/stats")) {
+            } else if (text.equals(STATS_COMMAND)) {
                 return handleStatsCommand(message);
-            } else if (text.startsWith("/admin_broadcast")) {
+            } else if (text.startsWith(ADMIN_BROADCAST_COMMAND)) {
                 handleAdminBroadcast(message);
                 return null;
-            } else if (text.equals("/admin_stats")) {
+            } else if (text.equals(ADMIN_STATS_COMMAND)) {
                 return handleAdminStats(message);
             } else {
                 return messageService.createMessage(chatId, "Unknown command. Use /start or /stats");
@@ -118,28 +120,28 @@ public class ReferralWebhookBot extends TelegramWebhookBot {
             }
         }
         
-        // Send welcome sequence asynchronously (after greeting)
-        sendWelcomeSequenceAsync(chatId, firstName);
+        // Send information sequence asynchronously (after greeting)
+        sendInformationSequenceAsync(chatId, firstName);
         
         // Return greeting as immediate response
         return messageService.createGreetingMessage(chatId, firstName);
     }
     
     /**
-     * Send welcome message sequence asynchronously (only main message, referral info comes from button)
+     * Send information message sequence asynchronously (only main message, referral info comes from button)
      */
-    private void sendWelcomeSequenceAsync(Long chatId, String firstName) {
+    private void sendInformationSequenceAsync(Long chatId, String firstName) {
         new Thread(() -> {
             try {
                 // Wait a bit before sending main message
-                Thread.sleep(500);
+                Thread.sleep(INFORMATION_SEQUENCE_DELAY_MS);
                 
-                // Send main welcome message with Takliflarim button
-                SendMessage mainWelcome = messageService.createMainWelcomeMessage(chatId);
-                sendMessageAsync(mainWelcome);
+                // Send main information message with Takliflarim button
+                SendMessage mainInformation = messageService.createMainInformationMessage(chatId);
+                sendMessageAsync(mainInformation);
                 
             } catch (Exception e) {
-                log.error("Error sending welcome sequence async", e);
+                log.error("Error sending information sequence async", e);
             }
         }).start();
     }
@@ -187,7 +189,7 @@ public class ReferralWebhookBot extends TelegramWebhookBot {
                 try {
                     sendMessageAsync(user.getChatId(), "📢 *Broadcast Message*\n\n" + broadcastMessage);
                     successCount++;
-                    Thread.sleep(50);
+                    Thread.sleep(BROADCAST_DELAY_MS);
                 } catch (Exception e) {
                     log.error("Failed to send broadcast to chatId=" + user.getChatId(), e);
                     failCount++;
@@ -225,6 +227,10 @@ public class ReferralWebhookBot extends TelegramWebhookBot {
         if (user.getReferralCount() < requiredCount) {
             return;
         }
+        
+        // Calculate total and indirect referrals
+        int totalReferrals = user.getReferralCount();
+        int indirectReferrals = user.getIndirectReferralCount();
         
         // Get all users invited by this user
         List<User> invitedUsers = userService.getUsersInvitedBy(user.getId());
@@ -274,7 +280,7 @@ public class ReferralWebhookBot extends TelegramWebhookBot {
         } else {
             // Not enough active referrals - send info message
             SendMessage message = messageService.createInsufficientActiveReferralsMessage(
-                user.getChatId(), activeCount, leftCount, requiredCount);
+                user.getChatId(), totalReferrals, indirectReferrals, activeCount, leftCount, requiredCount);
             sendMessageAsync(message);
             log.info("User {} has {} active, {} left referrals (need {})", 
                 user.getChatId(), activeCount, leftCount, requiredCount);

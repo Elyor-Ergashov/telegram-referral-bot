@@ -1,5 +1,7 @@
 package com.muzaffar.telegram.bot;
 
+import static com.muzaffar.telegram.constants.BotConstants.*;
+
 import com.muzaffar.telegram.config.AppConfig;
 import com.muzaffar.telegram.config.BotConfig;
 import com.muzaffar.telegram.entity.Channel;
@@ -10,16 +12,13 @@ import com.muzaffar.telegram.service.ChannelService;
 import com.muzaffar.telegram.service.MessageService;
 import com.muzaffar.telegram.service.MessageTemplateService;
 import com.muzaffar.telegram.service.UserService;
+import com.muzaffar.telegram.util.TelegramBotUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.AnswerInlineQuery;
 import org.telegram.telegrambots.meta.api.methods.groupadministration.GetChatMember;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
-import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
-import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
-import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
-import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -30,8 +29,6 @@ import org.telegram.telegrambots.meta.api.objects.inlinequery.inputmessageconten
 import org.telegram.telegrambots.meta.api.objects.inlinequery.result.InlineQueryResultArticle;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
-import java.io.File;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,8 +44,8 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
     private final ChannelService channelService;
     private final BotSettingsService settingsService;
     private final MessageTemplateService messageTemplateService;
+    private final TelegramBotUtils botUtils;
     
-    // Store referral codes temporarily for users who need to verify channels first
     private final Map<Long, String> pendingReferrals = new HashMap<>();
     
     // Store users who have seen the introduction message
@@ -57,10 +54,12 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
     public ReferralTelegramBot(BotConfig botConfig, AppConfig appConfig, 
                       UserService userService, MessageService messageService,
                       ChannelService channelService, BotSettingsService settingsService,
-                      MessageTemplateService messageTemplateService) {
+                      MessageTemplateService messageTemplateService,
+                      TelegramBotUtils botUtils) {
         super(botConfig.getBot().getToken());
         this.botConfig = botConfig;
         this.appConfig = appConfig;
+        this.botUtils = botUtils;
         this.userService = userService;
         this.messageService = messageService;
         this.channelService = channelService;
@@ -83,13 +82,13 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
                 
                 log.info("Received message from chatId={}: {}", chatId, text);
                 
-                if (text.startsWith("/start")) {
+                if (text.startsWith(START_COMMAND)) {
                     handleStartCommand(message);
-                } else if (text.equals("/stats")) {
+                } else if (text.equals(STATS_COMMAND)) {
                     handleStatsCommand(message);
-                } else if (text.startsWith("/admin_broadcast")) {
+                } else if (text.startsWith(ADMIN_BROADCAST_COMMAND)) {
                     handleAdminBroadcast(message);
-                } else if (text.equals("/admin_stats")) {
+                } else if (text.equals(ADMIN_STATS_COMMAND)) {
                     handleAdminStats(message);
                 } else {
                     // Silently delete unknown messages to keep chat clean
@@ -120,8 +119,8 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
         
         // Extract referral code if present (/start <referralCode>)
         String referralCode = null;
-        if (text.length() > 7) { // "/start " is 7 characters
-            referralCode = text.substring(7).trim();
+        if (text.length() > START_COMMAND_PREFIX_LENGTH) {
+            referralCode = text.substring(START_COMMAND_PREFIX_LENGTH).trim();
         }
         
         // Get or create user
@@ -167,7 +166,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
             } else {
                 // No channels configured, mark as verified
                 user.setHasVerifiedChannels(true);
-                userService.getOrCreateUser(chatId, username, firstName, lastName);
+                user = userService.save(user);
             }
         }
         
@@ -197,8 +196,8 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
             }
         }
         
-        // Send welcome messages in sequence (same for referral and direct users)
-        sendWelcomeSequence(chatId, firstName);
+        // Send information messages in sequence (same for referral and direct users)
+        sendInformationSequence(chatId, firstName);
     }
     
     /**
@@ -234,13 +233,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
             return;
         }
         
-        String text = message.getText();
-        if (text.length() <= 16) { // "/admin_broadcast " is 16 characters
-            sendMessage(chatId, "❌ Foydalanish: /admin_broadcast <xabar>");
-            return;
-        }
-        
-        String broadcastMessage = text.substring(16).trim();
+        String broadcastMessage = message.getText().substring(ADMIN_BROADCAST_PREFIX_LENGTH);
         List<User> users = userService.getAllUsers();
         
         int successCount = 0;
@@ -250,7 +243,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
             try {
                 sendMessage(user.getChatId(), "📢 *Xabar*\n\n" + broadcastMessage);
                 successCount++;
-                Thread.sleep(50); // Small delay to avoid rate limiting
+                Thread.sleep(BROADCAST_DELAY_MS); // Small delay to avoid rate limiting
             } catch (Exception e) {
                 log.error("Failed to send broadcast to chatId=" + user.getChatId(), e);
                 failCount++;
@@ -290,79 +283,36 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
         
         log.info("Received callback query from chatId={}: {}", chatId, data);
         
-        if ("start_bot".equals(data)) {
+        if (CALLBACK_START_BOT.equals(data)) {
             handleStartButton(chatId, messageId, callbackQuery.getFrom().getUserName(),
                 callbackQuery.getFrom().getFirstName(), callbackQuery.getFrom().getLastName());
-        } else if ("verify_channels".equals(data)) {
+        } else if (CALLBACK_VERIFY_CHANNELS.equals(data)) {
             handleChannelVerification(chatId, messageId, callbackQuery.getFrom().getUserName(),
                 callbackQuery.getFrom().getFirstName(), callbackQuery.getFrom().getLastName());
-        } else if ("my_referrals".equals(data)) {
+        } else if (CALLBACK_MY_REFERRALS.equals(data)) {
             handleMyReferrals(chatId, callbackQuery.getFrom().getUserName(),
                 callbackQuery.getFrom().getFirstName(), callbackQuery.getFrom().getLastName());
         }
     }
     
     /**
-     * Send welcome message sequence: greeting -> main message (with Takliflarim button)
-     * If an image exists for welcome message, sends it as photo with caption
+     * Send information message sequence: greeting -> main message (with Takliflarim button)
+     * If an image exists for information message, sends it as photo with caption
      */
-    private void sendWelcomeSequence(Long chatId, String firstName) {
+    private void sendInformationSequence(Long chatId, String firstName) {
         try {
             // 1. Send greeting
             SendMessage greeting = messageService.createGreetingMessage(chatId, firstName);
             execute(greeting);
             
             // Small delay for better UX
-            Thread.sleep(500);
+            Thread.sleep(INFORMATION_SEQUENCE_DELAY_MS);
             
-            // 2. Send main welcome message with Takliflarim button
-            // Check if there's an image for welcome message
-            String welcomeText = messageTemplateService.getText(MessageKey.WELCOME_MESSAGE);
-            var imagePathOptional = messageTemplateService.getImagePath(MessageKey.WELCOME_MESSAGE);
-            
-            if (imagePathOptional.isPresent()) {
-                // Send as photo with text caption
-                String imagePath = imagePathOptional.get();
-                String fullImagePath = getFullImagePath(imagePath);
-                File imageFile = new File(fullImagePath);
-                
-                if (imageFile.exists()) {
-                    SendPhoto photoMessage = new SendPhoto();
-                    photoMessage.setChatId(chatId.toString());
-                    photoMessage.setPhoto(new InputFile(imageFile));
-                    photoMessage.setCaption(welcomeText);
-                    photoMessage.setParseMode("Markdown");
-                    
-                    // Add Takliflarim button
-                    org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup keyboard = 
-                        new org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup();
-                    List<List<org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton>> rows = new ArrayList<>();
-                    
-                    org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton myReferralsButton = 
-                        new org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton();
-                    myReferralsButton.setText("👥 Takliflarim");
-                    myReferralsButton.setCallbackData("my_referrals");
-                    
-                    rows.add(List.of(myReferralsButton));
-                    keyboard.setKeyboard(rows);
-                    photoMessage.setReplyMarkup(keyboard);
-                    
-                    execute(photoMessage);
-                    log.info("Sent welcome message with image to chatId={}", chatId);
-                } else {
-                    log.warn("Welcome image file not found: {}", fullImagePath);
-                    // Fallback to text message
-                    SendMessage mainWelcome = messageService.createMainWelcomeMessage(chatId);
-                    execute(mainWelcome);
-                }
-            } else {
-                // No image, send as text message
-                SendMessage mainWelcome = messageService.createMainWelcomeMessage(chatId);
-                execute(mainWelcome);
-            }
+            // 2. Send main information message with Takliflarim button (with image if available)
+            messageService.sendInformationMessageWithImage(this, chatId);
             
         } catch (TelegramApiException | InterruptedException e) {
-            log.error("Error sending welcome sequence", e);
+            log.error("Error sending information sequence", e);
         }
     }
     
@@ -374,8 +324,8 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
         
         // Check if user has already verified channels
         if (user.getHasVerifiedChannels()) {
-            // User already verified, show welcome sequence
-            sendWelcomeSequence(chatId, firstName);
+            // User already verified, show information sequence
+            sendInformationSequence(chatId, firstName);
             return;
         }
         
@@ -392,10 +342,10 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
                 log.error("Error sending channel subscription message", e);
             }
         } else {
-            // No channels configured, mark as verified and show welcome
+            // No channels configured, mark as verified and show information
             user.setHasVerifiedChannels(true);
-            userService.getOrCreateUser(chatId, username, firstName, lastName);
-            sendWelcomeMessageAfterVerification(chatId, username, firstName, lastName);
+            userService.save(user);
+            sendInformationMessageAfterVerification(chatId, username, firstName, lastName);
         }
     }
     
@@ -551,7 +501,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
             User user = userService.getOrCreateUser(chatId, username, firstName, lastName);
             user.setHasVerifiedChannels(true);
             userService.getOrCreateUser(chatId, username, firstName, lastName);
-            sendWelcomeMessageAfterVerification(chatId, username, firstName, lastName);
+            sendInformationMessageAfterVerification(chatId, username, firstName, lastName);
             return;
         }
         
@@ -575,8 +525,8 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
             user.setHasVerifiedChannels(true);
             userService.getOrCreateUser(chatId, username, firstName, lastName);
             
-            // Send welcome message
-            sendWelcomeMessageAfterVerification(chatId, username, firstName, lastName);
+            // Send information message
+            sendInformationMessageAfterVerification(chatId, username, firstName, lastName);
         } else {
             // User is not subscribed to all channels
             String errorMessage = "❌ Iltimos, avval quyidagi kanallarga obuna bo'ling:\n\n" + notSubscribedChannels.toString();
@@ -584,7 +534,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
             
             // Resend subscription buttons
             try {
-                Thread.sleep(1000);
+                Thread.sleep(RETRY_DELAY_MS);
                 SendMessage channelMessage = messageService.createChannelSubscriptionMessage(chatId, activeChannels);
                 execute(channelMessage);
             } catch (Exception e) {
@@ -668,10 +618,10 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
     }
     
     /**
-     * Send welcome message after channel verification
+     * Send information message after channel verification
      * Also processes pending referrals
      */
-    private void sendWelcomeMessageAfterVerification(Long chatId, String username, String firstName, String lastName) {
+    private void sendInformationMessageAfterVerification(Long chatId, String username, String firstName, String lastName) {
         User user = userService.getOrCreateUser(chatId, username, firstName, lastName);
         
         // Check if there's a pending referral to process
@@ -708,8 +658,8 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
             }
         }
         
-        // Send the same welcome sequence for everyone (referral or direct)
-        sendWelcomeSequence(chatId, firstName);
+        // Send the same information sequence for everyone (referral or direct)
+        sendInformationSequence(chatId, firstName);
     }
     
     /**
@@ -728,6 +678,10 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
         if (user.getReferralCount() < requiredCount) {
             return;
         }
+        
+        // Calculate total and indirect referrals
+        int totalReferrals = user.getReferralCount();
+        int indirectReferrals = user.getIndirectReferralCount();
         
         // Get all users invited by this user
         List<User> invitedUsers = userService.getUsersInvitedBy(user.getId());
@@ -778,7 +732,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
             // Not enough active referrals - send info message
             try {
                 SendMessage message = messageService.createInsufficientActiveReferralsMessage(
-                    user.getChatId(), activeCount, leftCount, requiredCount);
+                    user.getChatId(), totalReferrals, indirectReferrals, activeCount, leftCount, requiredCount);
                 execute(message);
                 log.info("User {} has {} active, {} left referrals (need {})", 
                     user.getChatId(), activeCount, leftCount, requiredCount);
@@ -818,84 +772,45 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
     }
 
     /**
-     * Check if chat ID is admin
+     * Check if chat ID is admin (delegates to TelegramBotUtils)
      */
     private boolean isAdmin(Long chatId) {
-        return appConfig.getAdmin().getChatIds().contains(chatId);
+        return botUtils.isAdmin(chatId);
     }
     
     /**
-     * Send message to user
+     * Send message to user (delegates to TelegramBotUtils)
      */
     private void sendMessage(Long chatId, String text) {
-        try {
-            SendMessage message = messageService.createMessage(chatId, text);
-            execute(message);
-            log.info("Sent message to chatId={}", chatId);
-        } catch (TelegramApiException e) {
-            log.error("Error sending message to chatId=" + chatId, e);
-        }
+        botUtils.sendMessage(this, chatId, text);
     }
     
     /**
-     * Get full image path by combining base path with relative path
+     * Get full image path (delegates to TelegramBotUtils)
      */
     private String getFullImagePath(String relativePath) {
-        String basePath = appConfig.getImages().getBasePath();
-        if (basePath == null || basePath.isEmpty()) {
-            return relativePath;
-        }
-        // Ensure base path ends with separator
-        if (!basePath.endsWith("/") && !basePath.endsWith("\\")) {
-            basePath += java.io.File.separator;
-        }
-        return basePath + relativePath.replace("/", java.io.File.separator);
+        return botUtils.getFullImagePath(relativePath);
     }
     
     /**
-     * Send photo from file to user (accepts relative or absolute path)
+     * Send photo from file to user (delegates to TelegramBotUtils)
      */
     private void sendPhotoFromFile(Long chatId, String filePath) throws TelegramApiException {
-        // Convert relative path to full path if needed
-        String fullPath = getFullImagePath(filePath);
-        
-        SendPhoto photo = new SendPhoto();
-        photo.setChatId(chatId.toString());
-        photo.setPhoto(new InputFile(new java.io.File(fullPath)));
-        execute(photo);
-        log.info("Sent photo from file to chatId={}: {} (full: {})", chatId, filePath, fullPath);
+        botUtils.sendPhotoFromFile(this, chatId, filePath);
     }
     
     /**
-     * Edit message
+     * Edit message (delegates to TelegramBotUtils)
      */
     private void editMessage(Long chatId, Integer messageId, String text) {
-        try {
-            EditMessageText editMessage = new EditMessageText();
-            editMessage.setChatId(chatId.toString());
-            editMessage.setMessageId(messageId);
-            editMessage.setText(text);
-            editMessage.setParseMode("Markdown");
-            execute(editMessage);
-            log.info("Edited message for chatId={}", chatId);
-        } catch (TelegramApiException e) {
-            log.error("Error editing message for chatId=" + chatId, e);
-        }
+        botUtils.editMessage(this, chatId, messageId, text);
     }
     
     /**
-     * Delete a message
+     * Delete a message (delegates to TelegramBotUtils)
      */
     private void deleteMessage(Long chatId, Integer messageId) {
-        try {
-            DeleteMessage deleteMessage = new DeleteMessage();
-            deleteMessage.setChatId(chatId.toString());
-            deleteMessage.setMessageId(messageId);
-            execute(deleteMessage);
-            log.debug("Deleted message {} from chatId={}", messageId, chatId);
-        } catch (TelegramApiException e) {
-            log.debug("Could not delete message {} from chatId={}: {}", messageId, chatId, e.getMessage());
-        }
+        botUtils.deleteMessage(this, chatId, messageId);
     }
     
     /**
@@ -903,6 +818,9 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
      */
     private String getPrivateChannelLink() {
         return settingsService.getPrivateChannelLink()
-            .orElse(botConfig.getPrivateChannel().getInviteLink());
+            .orElseGet(() -> {
+                var privateChannel = botConfig.getPrivateChannel();
+                return privateChannel != null ? privateChannel.getInviteLink() : "";
+            });
     }
 }
