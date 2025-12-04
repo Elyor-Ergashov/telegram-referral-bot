@@ -14,8 +14,10 @@ import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.AnswerInlineQuery;
 import org.telegram.telegrambots.meta.api.methods.groupadministration.GetChatMember;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
+import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -388,6 +390,15 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
                     }
                 }
             }
+            
+            // Send optional stats header image first
+            settingsService.getStatsHeaderImagePath().ifPresent(imagePath -> {
+                try {
+                    sendPhotoFromFile(chatId, imagePath);
+                } catch (Exception e) {
+                    log.error("Error sending stats header image", e);
+                }
+            });
             
             SendMessage statsMessage = messageService.createStatsMessageWithButton(
                 chatId,
@@ -775,6 +786,17 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
         } catch (TelegramApiException e) {
             log.error("Error sending message to chatId=" + chatId, e);
         }
+    }
+    
+    /**
+     * Send photo from file to user
+     */
+    private void sendPhotoFromFile(Long chatId, String filePath) throws TelegramApiException {
+        SendPhoto photo = new SendPhoto();
+        photo.setChatId(chatId.toString());
+        photo.setPhoto(new InputFile(new java.io.File(filePath)));
+        execute(photo);
+        log.info("Sent photo from file to chatId={}: {}", chatId, filePath);
     }
     
     /**

@@ -43,6 +43,9 @@ public class TelegramBotConfiguration {
                 log.info("User bot username: @{}", telegramBot.getBotUsername());
                 
                 if (adminBot.getBotToken() != null && !adminBot.getBotToken().isEmpty()) {
+                    // Connect admin bot to referral bot for broadcasting
+                    adminBot.setReferralBot(telegramBot);
+                    
                     botsApi.registerBot(adminBot);
                     log.info("✅ Admin bot registered successfully with LONG POLLING mode");
                     log.info("Admin bot username: @{}", adminBot.getBotUsername());

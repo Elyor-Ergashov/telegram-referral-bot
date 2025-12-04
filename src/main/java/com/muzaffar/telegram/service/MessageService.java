@@ -15,6 +15,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class MessageService {
     
+    private final BotSettingsService settingsService;
+    
     /**
      * Create introduction message for first-time users
      */
@@ -54,29 +56,14 @@ public class MessageService {
     }
     
     /**
-     * Create main welcome message with share button (sent after greeting)
+     * Create main welcome message with share button (sent after greeting) - uses dynamic text from database
      */
     public SendMessage createMainWelcomeMessage(Long chatId) {
         SendMessage message = new SendMessage();
         message.setChatId(chatId.toString());
         
-        String text = 
-            "🎉 Assalomu alaykum!\n\n" +
-            "Matematikadan Milliy sertifikat imtihoniga bepul tayyorlanish imkoniyati!\n" +
-            "Va albatta siz uchun *1 ta bonus kitob* tayyorlab qo'ydim 📚✨\n\n" +
-            "🌟 Har bir yangi do'st taklif qilsangiz — *bonus ball* beriladi!\n" +
-            "🚀 Har bir taklif sizni sertifikatga yaqinlashtiradi!\n\n" +
-            "💥 Do'stingiz botga kirib kanalga a'zo bo'lsa — *+1 ball avto qo'shiladi!*\n\n" +
-            "🎯 5 ta matematikachi do'st taklif qilsangiz:\n" +
-            "🔥 *\"Geometriya 0 dan\" yopiq guruhiga bepul umrbod kirish!*\n\n" +
-            "🎁 Yuqori natija ko'rsatsangiz — *\"Geometriya Pro\"* guruhida o'qiysiz!\n\n" +
-            "📘 Bonus kitob faqat faol ishtirokchilarga!\n\n" +
-            "✨ Imkoniyatni qo'ldan boy bermang!\n\n" +
-            "❗ *Muhim:*\n" +
-            "Ball olish uchun do'stingiz botga kirib, majburiy kanallarga a'zo bo'lib, 10 kun chiqmasligi kerak\n\n" +
-            "💡 Do'stlaringizni hozir taklif qiling:\n" +
-            "(Havolani olish uchun Takliflarim tugmasini bosing...)\n\n" +
-            "📘 Asosiy menyuga xush kelibsiz!";
+        // Get welcome text from database
+        String text = settingsService.getWelcomeMessageText();
         
         message.setText(text);
         message.setParseMode("Markdown");
@@ -126,6 +113,12 @@ public class MessageService {
         int totalInvites = totalReferralCount + indirectReferralCount;
         
         StringBuilder text = new StringBuilder();
+        
+        // Add optional header text from database
+        settingsService.getStatsHeaderText().ifPresent(headerText -> {
+            text.append(headerText).append("\n\n");
+        });
+        
         text.append("📊 *Sizning statistikangiz*\n\n");
         text.append(String.format("📊 *Jami takliflaringiz:* %d (To'g'ridan-to'g'ri: %d, Bilvosita: %d)\n\n", 
             totalInvites, totalReferralCount, indirectReferralCount));
