@@ -27,6 +27,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -34,6 +35,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
+import javax.imageio.ImageIO;
 
 @Slf4j
 @Component
@@ -52,6 +54,9 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     private final Map<Long, Map<String, String>> userData = new HashMap<>();
     
     private static final String IMAGES_RELATIVE_DIRECTORY = "bot_images/stats_headers/";
+    
+    private static final long MAX_FILE_SIZE_MB = 5;
+    private static final long MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
     
     public AdminTelegramBot(BotConfig botConfig, AppConfig appConfig,
                            ChannelService channelService, BotSettingsService settingsService,
@@ -123,10 +128,8 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                         handleTextInput(chatId, text, message.getMessageId());
                     }
                 } else if (message.hasPhoto()) {
-                    // Handle compressed photo upload
                     handlePhotoUpload(chatId, message);
                 } else if (message.hasDocument()) {
-                    // Handle uncompressed file upload (sent as document)
                     handleDocumentUpload(chatId, message);
                 }
             } else if (update.hasCallbackQuery()) {
@@ -159,17 +162,14 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         
-        // Channel Management button
         InlineKeyboardButton channelBtn = new InlineKeyboardButton();
         channelBtn.setText("📺 Kanallarni boshqarish");
         channelBtn.setCallbackData("menu_channels");
         
-        // Settings button
         InlineKeyboardButton settingsBtn = new InlineKeyboardButton();
         settingsBtn.setText("⚙️ Sozlamalar");
         settingsBtn.setCallbackData("menu_settings");
         
-        // Broadcast button
         InlineKeyboardButton broadcastBtn = new InlineKeyboardButton();
         broadcastBtn.setText("📢 Xabar yuborish");
         broadcastBtn.setCallbackData("menu_broadcast");
@@ -428,13 +428,11 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
      * Handle cancel operation - clear state and return to main menu
      */
     private void handleCancelOperation(Long chatId, Integer messageId) {
-        // Clear any active states
         userStates.remove(chatId);
         userData.remove(chatId);
         
         log.info("User {} cancelled operation, returning to main menu", chatId);
         
-        // Return to main menu
         editToMainMenu(chatId, messageId);
     }
     
@@ -592,7 +590,6 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         if (state == null) {
             // Silently ignore text when no active state (user should use buttons)
             log.debug("Ignoring text input from chatId={} (no active state): {}", chatId, text);
-            // Delete the unnecessary message
             deleteMessage(chatId, messageId);
             return;
         }
@@ -623,7 +620,6 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                 handleBroadcastUserIdInput(chatId, text, messageId);
                 break;
             default:
-                // Silently ignore unknown states
                 log.warn("Unknown state for chatId={}: {}", chatId, state);
                 userStates.remove(chatId);
                 userData.remove(chatId);
@@ -635,7 +631,6 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
      * Handle channel ID input
      */
     private void handleChannelIdInput(Long chatId, String channelId, Integer messageId) {
-        // Delete the user's message to keep chat clean
         deleteMessage(chatId, messageId);
         Map<String, String> data = userData.get(chatId);
         data.put("channelId", channelId);
@@ -648,7 +643,6 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
      * Handle channel name input
      */
     private void handleChannelNameInput(Long chatId, String channelName, Integer messageId) {
-        // Delete the user's message to keep chat clean
         deleteMessage(chatId, messageId);
         Map<String, String> data = userData.get(chatId);
         data.put("channelName", channelName);
@@ -661,7 +655,6 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
      * Handle channel username input
      */
     private void handleChannelUsernameInput(Long chatId, String channelUsername, Integer messageId) {
-        // Delete the user's message to keep chat clean
         deleteMessage(chatId, messageId);
         Map<String, String> data = userData.get(chatId);
         
@@ -695,7 +688,6 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
      * Handle referral count input
      */
     private void handleReferralCountInput(Long chatId, String text, Integer messageId) {
-        // Delete the user's message to keep chat clean
         deleteMessage(chatId, messageId);
         
         try {
@@ -1305,6 +1297,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     
     /**
      * Send welcome message with button to a user
+     * If an image exists for welcome message, sends it as photo with caption
      */
     private void sendWelcomeMessageToUser(Long targetChatId) throws TelegramApiException {
         if (referralBot == null) {
@@ -1312,11 +1305,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         }
         
         String welcomeText = messageTemplateService.getText(MessageKey.WELCOME_MESSAGE);
-        
-        SendMessage message = new SendMessage();
-        message.setChatId(targetChatId.toString());
-        message.setText(welcomeText);
-        message.setParseMode("Markdown");
+        var imagePathOptional = messageTemplateService.getImagePath(MessageKey.WELCOME_MESSAGE);
         
         // Add "Takliflarim" button
         InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
@@ -1328,10 +1317,43 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         
         rows.add(List.of(myReferralsButton));
         keyboard.setKeyboard(rows);
-        message.setReplyMarkup(keyboard);
         
-        // Send via referral bot
-        referralBot.execute(message);
+        // Check if there's an image
+        if (imagePathOptional.isPresent()) {
+            String imagePath = imagePathOptional.get();
+            String fullImagePath = getFullImagePath(imagePath);
+            File imageFile = new File(fullImagePath);
+            
+            if (imageFile.exists()) {
+                // Send as photo with caption
+                SendPhoto photoMessage = new SendPhoto();
+                photoMessage.setChatId(targetChatId.toString());
+                photoMessage.setPhoto(new InputFile(imageFile));
+                photoMessage.setCaption(welcomeText);
+                photoMessage.setParseMode("Markdown");
+                photoMessage.setReplyMarkup(keyboard);
+                
+                referralBot.execute(photoMessage);
+                log.info("Sent welcome message with image to user chatId={}", targetChatId);
+            } else {
+                log.warn("Welcome image file not found: {}", fullImagePath);
+                // Fallback to text message
+                SendMessage message = new SendMessage();
+                message.setChatId(targetChatId.toString());
+                message.setText(welcomeText);
+                message.setParseMode("Markdown");
+                message.setReplyMarkup(keyboard);
+                referralBot.execute(message);
+            }
+        } else {
+            // No image, send as text message
+            SendMessage message = new SendMessage();
+            message.setChatId(targetChatId.toString());
+            message.setText(welcomeText);
+            message.setParseMode("Markdown");
+            message.setReplyMarkup(keyboard);
+            referralBot.execute(message);
+        }
     }
     
     /**
@@ -1371,6 +1393,14 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             // Download file
             java.io.File downloadedFile = downloadFile(file);
             
+            // Validate and process image
+            File processedFile = validateAndProcessImage(downloadedFile, chatId);
+            if (processedFile == null) {
+                // Validation failed, error message already sent
+                downloadedFile.delete();
+                return;
+            }
+            
             // Generate unique filename
             String fileName = "stats_header_" + System.currentTimeMillis() + ".jpg";
             String relativePath = IMAGES_RELATIVE_DIRECTORY + fileName;
@@ -1388,21 +1418,21 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                 }
             });
             
-            // Move file to permanent location
-            Files.move(downloadedFile.toPath(), destinationPath, StandardCopyOption.REPLACE_EXISTING);
+            // Move validated file to permanent location
+            Files.move(processedFile.toPath(), destinationPath, StandardCopyOption.REPLACE_EXISTING);
             
             // Save relative path to database
             messageTemplateService.updateImagePath(templateKey, relativePath);
             
             String successMessage = templateKey == MessageKey.WELCOME_MESSAGE 
-                ? "✅ *Welcome rasmi o'zgartirildi!*\n\nFayl saqlandi: `%s`"
-                : "✅ *Statistika rasmi o'zgartirildi!*\n\nFayl saqlandi: `%s`";
-            sendMessage(chatId, String.format(successMessage, fileName), createBackToMenuButton());
+                ? "✅ *Welcome rasmi o'zgartirildi!*\n\nRasm muvaffaqiyatli saqlandi."
+                : "✅ *Statistika rasmi o'zgartirildi!*\n\nRasm muvaffaqiyatli saqlandi.";
+            sendMessage(chatId, successMessage, createBackToMenuButton());
             
             // Clear state
             userStates.remove(chatId);
             
-            log.info("Stats header image uploaded successfully: {} -> {}", relativePath, fullPath);
+            log.info("Image uploaded successfully: {} -> {}", relativePath, fullPath);
             
         } catch (Exception e) {
             log.error("Error handling photo upload", e);
@@ -1452,14 +1482,16 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             // Download file
             java.io.File downloadedFile = downloadFile(file);
             
-            // Get file extension from original filename
-            String extension = getFileExtension(fileName);
-            if (extension.isEmpty()) {
-                extension = "jpg"; // Default to jpg if no extension found
+            // Validate and process image
+            File processedFile = validateAndProcessImage(downloadedFile, chatId);
+            if (processedFile == null) {
+                // Validation failed, error message already sent
+                downloadedFile.delete();
+                return;
             }
             
-            // Generate unique filename
-            String savedFileName = "stats_header_" + System.currentTimeMillis() + "." + extension;
+            // Generate unique filename (always save as jpg after processing)
+            String savedFileName = "stats_header_" + System.currentTimeMillis() + ".jpg";
             String relativePath = IMAGES_RELATIVE_DIRECTORY + savedFileName;
             String fullPath = getFullImagePath(relativePath);
             Path destinationPath = Paths.get(fullPath);
@@ -1475,21 +1507,21 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                 }
             });
             
-            // Move file to permanent location
-            Files.move(downloadedFile.toPath(), destinationPath, StandardCopyOption.REPLACE_EXISTING);
+            // Move validated file to permanent location
+            Files.move(processedFile.toPath(), destinationPath, StandardCopyOption.REPLACE_EXISTING);
             
             // Save relative path to database
             messageTemplateService.updateImagePath(templateKey, relativePath);
             
             String successMessage = templateKey == MessageKey.WELCOME_MESSAGE 
-                ? "✅ *Welcome rasmi o'zgartirildi!*\n\nFayl saqlandi: `%s`"
-                : "✅ *Statistika rasmi o'zgartirildi!*\n\nFayl saqlandi: `%s`";
-            sendMessage(chatId, String.format(successMessage, savedFileName), createBackToMenuButton());
+                ? "✅ *Welcome rasmi o'zgartirildi!*\n\nRasm muvaffaqiyatli saqlandi."
+                : "✅ *Statistika rasmi o'zgartirildi!*\n\nRasm muvaffaqiyatli saqlandi.";
+            sendMessage(chatId, successMessage, createBackToMenuButton());
             
             // Clear state
             userStates.remove(chatId);
             
-            log.info("Stats header image (document) uploaded successfully: {} -> {}", relativePath, fullPath);
+            log.info("Image (document) uploaded successfully: {} -> {}", relativePath, fullPath);
             
         } catch (Exception e) {
             log.error("Error handling document upload", e);
@@ -1575,6 +1607,48 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         keyboard.setKeyboard(rows);
         
         return keyboard;
+    }
+    
+    /**
+     * Validate uploaded image according to size standards
+     * @param sourceFile The downloaded image file
+     * @return The source file if validation passes, or null if validation fails
+     */
+    private File validateAndProcessImage(File sourceFile, Long chatId) {
+        try {
+            // Check file size
+            long fileSize = sourceFile.length();
+            if (fileSize > MAX_FILE_SIZE_BYTES) {
+                sendMessage(chatId, String.format(
+                    "❌ *Fayl hajmi juda katta!*\n\n" +
+                    "Maksimal hajm: %d MB\n" +
+                    "Sizning faylingiz: %.2f MB\n\n" +
+                    "Iltimos, kichikroq fayl yuklang.",
+                    MAX_FILE_SIZE_MB,
+                    fileSize / (1024.0 * 1024.0)
+                ));
+                return null;
+            }
+            
+            // Read image
+            BufferedImage originalImage = ImageIO.read(sourceFile);
+            if (originalImage == null) {
+                sendMessage(chatId, "❌ *Rasm faylini o'qib bo'lmadi!*\n\nIltimos, to'g'ri rasm formatida fayl yuklang (JPG, PNG).");
+                return null;
+            }
+            
+            int originalWidth = originalImage.getWidth();
+            int originalHeight = originalImage.getHeight();
+            
+            log.info("Image dimensions: {}x{}", originalWidth, originalHeight);
+            log.info("Image validation passed");
+            return sourceFile;
+            
+        } catch (IOException e) {
+            log.error("Error processing image", e);
+            sendMessage(chatId, "❌ *Rasmni qayta ishlashda xatolik yuz berdi!*\n\nIltimos, boshqa rasm yuklang.");
+            return null;
+        }
     }
     
     /**

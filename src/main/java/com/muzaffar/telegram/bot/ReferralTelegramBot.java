@@ -30,6 +30,7 @@ import org.telegram.telegrambots.meta.api.objects.inlinequery.inputmessageconten
 import org.telegram.telegrambots.meta.api.objects.inlinequery.result.InlineQueryResultArticle;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -303,6 +304,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
     
     /**
      * Send welcome message sequence: greeting -> main message (with Takliflarim button)
+     * If an image exists for welcome message, sends it as photo with caption
      */
     private void sendWelcomeSequence(Long chatId, String firstName) {
         try {
@@ -314,8 +316,50 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
             Thread.sleep(500);
             
             // 2. Send main welcome message with Takliflarim button
-            SendMessage mainWelcome = messageService.createMainWelcomeMessage(chatId);
-            execute(mainWelcome);
+            // Check if there's an image for welcome message
+            String welcomeText = messageTemplateService.getText(MessageKey.WELCOME_MESSAGE);
+            var imagePathOptional = messageTemplateService.getImagePath(MessageKey.WELCOME_MESSAGE);
+            
+            if (imagePathOptional.isPresent()) {
+                // Send as photo with text caption
+                String imagePath = imagePathOptional.get();
+                String fullImagePath = getFullImagePath(imagePath);
+                File imageFile = new File(fullImagePath);
+                
+                if (imageFile.exists()) {
+                    SendPhoto photoMessage = new SendPhoto();
+                    photoMessage.setChatId(chatId.toString());
+                    photoMessage.setPhoto(new InputFile(imageFile));
+                    photoMessage.setCaption(welcomeText);
+                    photoMessage.setParseMode("Markdown");
+                    
+                    // Add Takliflarim button
+                    org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup keyboard = 
+                        new org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup();
+                    List<List<org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton>> rows = new ArrayList<>();
+                    
+                    org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton myReferralsButton = 
+                        new org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton();
+                    myReferralsButton.setText("👥 Takliflarim");
+                    myReferralsButton.setCallbackData("my_referrals");
+                    
+                    rows.add(List.of(myReferralsButton));
+                    keyboard.setKeyboard(rows);
+                    photoMessage.setReplyMarkup(keyboard);
+                    
+                    execute(photoMessage);
+                    log.info("Sent welcome message with image to chatId={}", chatId);
+                } else {
+                    log.warn("Welcome image file not found: {}", fullImagePath);
+                    // Fallback to text message
+                    SendMessage mainWelcome = messageService.createMainWelcomeMessage(chatId);
+                    execute(mainWelcome);
+                }
+            } else {
+                // No image, send as text message
+                SendMessage mainWelcome = messageService.createMainWelcomeMessage(chatId);
+                execute(mainWelcome);
+            }
             
         } catch (TelegramApiException | InterruptedException e) {
             log.error("Error sending welcome sequence", e);
