@@ -10,6 +10,7 @@ import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
+import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
@@ -78,16 +79,17 @@ public class TelegramBotUtils {
      * @param text The message text
      * @param keyboard The inline keyboard markup
      */
-    public void sendMessageWithKeyboard(TelegramLongPollingBot bot, Long chatId, String text, InlineKeyboardMarkup keyboard) {
+    public Message sendMessageWithKeyboard(TelegramLongPollingBot bot, Long chatId, String text, InlineKeyboardMarkup keyboard) {
         try {
             SendMessage message = new SendMessage();
             message.setChatId(chatId.toString());
             message.setText(text);
             message.setParseMode("Markdown");
             message.setReplyMarkup(keyboard);
-            bot.execute(message);
+            return bot.execute(message);
         } catch (TelegramApiException e) {
             log.error("Failed to send message with keyboard to chatId={}", chatId, e);
+            return null;
         }
     }
     
@@ -137,22 +139,24 @@ public class TelegramBotUtils {
      * @param chatId The chat ID to send to
      * @param relativePath The relative path to the image file
      */
-    public void sendPhotoFromFile(TelegramLongPollingBot bot, Long chatId, String relativePath) {
+    public Message sendPhotoFromFile(TelegramLongPollingBot bot, Long chatId, String relativePath) {
         try {
             String fullPath = getFullImagePath(relativePath);
             File imageFile = new File(fullPath);
             
             if (!imageFile.exists()) {
                 log.warn("Image file not found: {}", fullPath);
-                return;
+                sendMessage(bot, chatId, "❌ Image not found: " + relativePath);
+                return null;
             }
             
-            SendPhoto photo = new SendPhoto();
-            photo.setChatId(chatId.toString());
-            photo.setPhoto(new InputFile(imageFile));
-            bot.execute(photo);
+            SendPhoto sendPhoto = new SendPhoto();
+            sendPhoto.setChatId(chatId.toString());
+            sendPhoto.setPhoto(new InputFile(imageFile));
+            return bot.execute(sendPhoto);
         } catch (TelegramApiException e) {
-            log.error("Failed to send photo to chatId={}", chatId, e);
+            log.error("Failed to send photo from file to chatId={}, file={}", chatId, relativePath, e);
+            return null;
         }
     }
     
@@ -164,25 +168,26 @@ public class TelegramBotUtils {
      * @param relativePath The relative path to the image file
      * @param caption The caption text
      */
-    public void sendPhotoWithCaption(TelegramLongPollingBot bot, Long chatId, String relativePath, String caption) {
+    public Message sendPhotoWithCaption(TelegramLongPollingBot bot, Long chatId, String relativePath, String caption) {
         try {
             String fullPath = getFullImagePath(relativePath);
             File imageFile = new File(fullPath);
             
             if (!imageFile.exists()) {
                 log.warn("Image file not found: {}", fullPath);
-                sendMessage(bot, chatId, caption);
-                return;
+                sendMessage(bot, chatId, caption + "\n\n❌ Image not found: " + relativePath);
+                return null;
             }
             
-            SendPhoto photo = new SendPhoto();
-            photo.setChatId(chatId.toString());
-            photo.setPhoto(new InputFile(imageFile));
-            photo.setCaption(caption);
-            photo.setParseMode("Markdown");
-            bot.execute(photo);
+            SendPhoto sendPhoto = new SendPhoto();
+            sendPhoto.setChatId(chatId.toString());
+            sendPhoto.setPhoto(new InputFile(imageFile));
+            sendPhoto.setCaption(caption);
+            sendPhoto.setParseMode("Markdown");
+            return bot.execute(sendPhoto);
         } catch (TelegramApiException e) {
-            log.error("Failed to send photo with caption to chatId={}", chatId, e);
+            log.error("Failed to send photo with caption to chatId={}, file={}", chatId, relativePath, e);
+            return null;
         }
     }
     
