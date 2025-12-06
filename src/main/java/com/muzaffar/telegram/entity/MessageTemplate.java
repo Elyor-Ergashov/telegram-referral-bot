@@ -10,20 +10,26 @@ import java.time.LocalDateTime;
 
 /**
  * Entity for storing message templates with text and optional images
+ * Each template belongs to a specific challenge
  */
 @Data
 @Entity
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(name = "message_templates")
+@Table(name = "message_templates", 
+       uniqueConstraints = @UniqueConstraint(columnNames = {"challenge_id", "message_key"}))
 public class MessageTemplate {
     
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "challenge_id", nullable = false)
+    private Challenge challenge;
+    
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, unique = true)
+    @Column(name = "message_key", nullable = false)
     private MessageKey messageKey;
     
     @Column(columnDefinition = "TEXT")

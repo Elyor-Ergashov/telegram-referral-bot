@@ -53,14 +53,14 @@ public class MessageService {
     }
     
     /**
-     * Create main information message with share button (sent after greeting) - uses dynamic text from database
+     * Create main information message with share button (sent after greeting) - uses challenge-specific text from database
      */
-    public SendMessage createMainInformationMessage(Long chatId) {
+    public SendMessage createMainInformationMessage(Long challengeId, Long chatId) {
         SendMessage message = new SendMessage();
         message.setChatId(chatId.toString());
         
-        // Get information text from database
-        String text = messageTemplateService.getText(MessageKey.INFORMATION_MESSAGE);
+        // Get information text from database for this challenge
+        String text = messageTemplateService.getText(challengeId, MessageKey.INFORMATION_MESSAGE);
         
         message.setText(text);
         message.setParseMode("Markdown");
@@ -75,7 +75,7 @@ public class MessageService {
     /**
      * Create stats message with share button, showing active and left referrals
      */
-    public SendMessage createStatsMessageWithButton(Long chatId, String botUsername, String referralCode, 
+    public SendMessage createStatsMessageWithButton(Long challengeId, Long chatId, String botUsername, String referralCode, 
                                                    int totalReferralCount, int indirectReferralCount, 
                                                    int activeCount, int leftCount, int requiredCount) {
         SendMessage message = new SendMessage();
@@ -87,8 +87,8 @@ public class MessageService {
         
         StringBuilder text = new StringBuilder();
         
-        // Add optional header text from database
-        String headerText = messageTemplateService.getText(MessageKey.STATS_HEADER);
+        // Add optional header text from database for this challenge
+        String headerText = messageTemplateService.getText(challengeId, MessageKey.STATS_HEADER);
         if (headerText != null && !headerText.isEmpty()) {
             text.append(headerText).append("\n\n");
         }
@@ -278,7 +278,7 @@ public class MessageService {
     /**
      * Create channel subscription request message with buttons
      */
-    public SendMessage createChannelSubscriptionMessage(Long chatId, List<com.muzaffar.telegram.entity.Channel> channels) {
+    public SendMessage createChannelSubscriptionMessage(Long chatId, List<com.muzaffar.telegram.entity.ChallengeChannel> channels) {
         SendMessage message = new SendMessage();
         message.setChatId(chatId.toString());
         
@@ -288,13 +288,14 @@ public class MessageService {
         
         message.setText(text.toString());
         message.setParseMode("Markdown");
+        message.setDisableWebPagePreview(true);  // Disable preview to prevent channel cards
         
         // Create inline keyboard with channel buttons and confirmation button
         InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         
         // Add channel buttons
-        for (com.muzaffar.telegram.entity.Channel channel : channels) {
+        for (com.muzaffar.telegram.entity.ChallengeChannel channel : channels) {
             InlineKeyboardButton channelButton = new InlineKeyboardButton();
             channelButton.setText(channel.getChannelName());
             channelButton.setUrl("https://t.me/" + channel.getChannelUsername());
@@ -369,16 +370,17 @@ public class MessageService {
     }
     
     /**
-     * Send information message with optional image and "Takliflarim" button.
-     * This method handles both photo with caption and text-only messages.
+     * Send main information message with optional image (convenience method)
      * 
      * @param bot The bot instance to use for sending
+     * @param challengeId The challenge ID to get templates for
      * @param chatId The chat ID to send to
      */
-    public void sendInformationMessageWithImage(org.telegram.telegrambots.bots.TelegramLongPollingBot bot, Long chatId) {
+    public void sendInformationMessageWithImage(org.telegram.telegrambots.bots.TelegramLongPollingBot bot, 
+                                                Long challengeId, Long chatId) {
         try {
-            String informationText = messageTemplateService.getText(MessageKey.INFORMATION_MESSAGE);
-            var imagePathOptional = messageTemplateService.getImagePath(MessageKey.INFORMATION_MESSAGE);
+            String informationText = messageTemplateService.getText(challengeId, MessageKey.INFORMATION_MESSAGE);
+            var imagePathOptional = messageTemplateService.getImagePath(challengeId, MessageKey.INFORMATION_MESSAGE);
             
             // Create keyboard with "Takliflarim" button
             InlineKeyboardMarkup keyboard = KeyboardBuilder.singleButton(BUTTON_MY_REFERRALS, CALLBACK_MY_REFERRALS);
@@ -392,7 +394,8 @@ public class MessageService {
                 botUtils.sendMessageWithKeyboard(bot, chatId, informationText, keyboard);
             }
         } catch (Exception e) {
-            log.error("Error sending information message with image to chatId={}", chatId, e);
+            log.error("Error sending information message with image to chatId={} for challenge={}", 
+                    chatId, challengeId, e);
         }
     }
 }

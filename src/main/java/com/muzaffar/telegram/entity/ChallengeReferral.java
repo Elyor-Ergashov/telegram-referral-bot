@@ -9,29 +9,39 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "channels")
+@Table(name = "challenge_referrals",
+       indexes = {
+           @Index(name = "idx_challenge_referrer", columnList = "challenge_id, referrerChatId"),
+           @Index(name = "idx_challenge_referred", columnList = "challenge_id, referredChatId"),
+           @Index(name = "idx_referrer_valid", columnList = "referrerChatId, isValid")
+       },
+       uniqueConstraints = {
+           @UniqueConstraint(name = "uk_challenge_referral", 
+                            columnNames = {"challenge_id", "referrerChatId", "referredChatId"})
+       })
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Channel {
+public class ChallengeReferral {
     
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @Column(nullable = false, unique = true)
-    private String channelId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "challenge_id", nullable = false)
+    private Challenge challenge;
     
     @Column(nullable = false)
-    private String channelName;
+    private Long referrerChatId;
     
     @Column(nullable = false)
-    private String channelUsername;
+    private Long referredChatId;
     
     @Column(nullable = false)
     @Builder.Default
-    private Boolean isActive = true;
+    private Boolean isValid = false;
     
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

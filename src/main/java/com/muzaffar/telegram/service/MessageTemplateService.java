@@ -1,17 +1,20 @@
 package com.muzaffar.telegram.service;
 
+import com.muzaffar.telegram.entity.Challenge;
 import com.muzaffar.telegram.entity.MessageTemplate;
 import com.muzaffar.telegram.enums.MessageKey;
+import com.muzaffar.telegram.repository.ChallengeRepository;
 import com.muzaffar.telegram.repository.MessageTemplateRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
- * Service for managing message templates
+ * Service for managing challenge-specific message templates
  */
 @Slf4j
 @Service
@@ -19,74 +22,99 @@ import java.util.Optional;
 public class MessageTemplateService {
     
     private final MessageTemplateRepository repository;
+    private final ChallengeRepository challengeRepository;
     
     /**
-     * Get message template by key
+     * Get message template by challenge and key
      */
-    public Optional<MessageTemplate> getTemplate(MessageKey messageKey) {
-        return repository.findByMessageKey(messageKey);
+    public Optional<MessageTemplate> getTemplate(Long challengeId, MessageKey messageKey) {
+        Challenge challenge = challengeRepository.findById(challengeId)
+            .orElseThrow(() -> new IllegalArgumentException("Challenge not found: " + challengeId));
+        return repository.findByChallengeAndMessageKey(challenge, messageKey);
     }
     
     /**
-     * Get message text by key
+     * Get message text by challenge and key
      */
-    public String getText(MessageKey messageKey) {
-        return getTemplate(messageKey)
+    public String getText(Long challengeId, MessageKey messageKey) {
+        return getTemplate(challengeId, messageKey)
             .map(MessageTemplate::getText)
             .orElse("");
     }
     
     /**
-     * Get image path by key
+     * Get image path by challenge and key
      */
-    public Optional<String> getImagePath(MessageKey messageKey) {
-        return getTemplate(messageKey)
+    public Optional<String> getImagePath(Long challengeId, MessageKey messageKey) {
+        return getTemplate(challengeId, messageKey)
             .map(MessageTemplate::getImagePath)
             .filter(path -> path != null && !path.isEmpty());
     }
     
     /**
-     * Update message text
+     * Get all templates for a challenge
+     */
+    public List<MessageTemplate> getTemplatesForChallenge(Long challengeId) {
+        Challenge challenge = challengeRepository.findById(challengeId)
+            .orElseThrow(() -> new IllegalArgumentException("Challenge not found: " + challengeId));
+        return repository.findByChallenge(challenge);
+    }
+    
+    /**
+     * Update message text for a challenge
      */
     @Transactional
-    public void updateText(MessageKey messageKey, String text) {
-        MessageTemplate template = repository.findByMessageKey(messageKey)
+    public void updateText(Long challengeId, MessageKey messageKey, String text) {
+        Challenge challenge = challengeRepository.findById(challengeId)
+            .orElseThrow(() -> new IllegalArgumentException("Challenge not found: " + challengeId));
+        
+        MessageTemplate template = repository.findByChallengeAndMessageKey(challenge, messageKey)
             .orElseGet(() -> {
                 MessageTemplate newTemplate = new MessageTemplate();
+                newTemplate.setChallenge(challenge);
                 newTemplate.setMessageKey(messageKey);
                 return newTemplate;
             });
         
         template.setText(text);
         repository.save(template);
-        log.info("Updated text for {}: {}", messageKey, text.substring(0, Math.min(50, text.length())));
+        log.info("Updated text for challenge {} - {}: {}", challengeId, messageKey, 
+                text.substring(0, Math.min(50, text.length())));
     }
     
     /**
-     * Update image path
+     * Update image path for a challenge
      */
     @Transactional
-    public void updateImagePath(MessageKey messageKey, String imagePath) {
-        MessageTemplate template = repository.findByMessageKey(messageKey)
+    public void updateImagePath(Long challengeId, MessageKey messageKey, String imagePath) {
+        Challenge challenge = challengeRepository.findById(challengeId)
+            .orElseThrow(() -> new IllegalArgumentException("Challenge not found: " + challengeId));
+        
+        MessageTemplate template = repository.findByChallengeAndMessageKey(challenge, messageKey)
             .orElseGet(() -> {
                 MessageTemplate newTemplate = new MessageTemplate();
+                newTemplate.setChallenge(challenge);
                 newTemplate.setMessageKey(messageKey);
                 return newTemplate;
             });
         
         template.setImagePath(imagePath);
         repository.save(template);
-        log.info("Updated image path for {}: {}", messageKey, imagePath);
+        log.info("Updated image path for challenge {} - {}: {}", challengeId, messageKey, imagePath);
     }
     
     /**
-     * Update both text and image path
+     * Update both text and image path for a challenge
      */
     @Transactional
-    public void updateTemplate(MessageKey messageKey, String text, String imagePath) {
-        MessageTemplate template = repository.findByMessageKey(messageKey)
+    public void updateTemplate(Long challengeId, MessageKey messageKey, String text, String imagePath) {
+        Challenge challenge = challengeRepository.findById(challengeId)
+            .orElseThrow(() -> new IllegalArgumentException("Challenge not found: " + challengeId));
+        
+        MessageTemplate template = repository.findByChallengeAndMessageKey(challenge, messageKey)
             .orElseGet(() -> {
                 MessageTemplate newTemplate = new MessageTemplate();
+                newTemplate.setChallenge(challenge);
                 newTemplate.setMessageKey(messageKey);
                 return newTemplate;
             });
@@ -99,17 +127,21 @@ public class MessageTemplateService {
         }
         
         repository.save(template);
-        log.info("Updated template for {}", messageKey);
+        log.info("Updated template for challenge {} - {}", challengeId, messageKey);
     }
     
     /**
-     * Initialize default templates if they don't exist
+     * Initialize default templates for a challenge if they don't exist
      */
     @Transactional
-    public void initializeDefaultTemplates() {
+    public void initializeDefaultTemplatesForChallenge(Long challengeId) {
+        Challenge challenge = challengeRepository.findById(challengeId)
+            .orElseThrow(() -> new IllegalArgumentException("Challenge not found: " + challengeId));
+        
         // Initialize INFORMATION_MESSAGE
-        if (!repository.existsByMessageKey(MessageKey.INFORMATION_MESSAGE)) {
+        if (!repository.existsByChallengeAndMessageKey(challenge, MessageKey.INFORMATION_MESSAGE)) {
             MessageTemplate informationTemplate = new MessageTemplate();
+            informationTemplate.setChallenge(challenge);
             informationTemplate.setMessageKey(MessageKey.INFORMATION_MESSAGE);
             informationTemplate.setText(
                 "🎉 Assalomu alaykum!\n\n" +
@@ -118,28 +150,40 @@ public class MessageTemplateService {
                 "🌟 Har bir yangi do'st taklif qilsangiz — *bonus ball* beriladi!\n" +
                 "🚀 Har bir taklif sizni sertifikatga yaqinlashtiradi!\n\n" +
                 "💥 Do'stingiz botga kirib kanalga a'zo bo'lsa — *+1 ball avto qo'shiladi!*\n\n" +
-                "🎯 5 ta matematikachi do'st taklif qilsangiz:\n" +
-                "🔥 *\"Geometriya 0 dan\" yopiq guruhiga bepul umrbod kirish!*\n\n" +
-                "🎁 Yuqori natija ko'rsatsangiz — *\"Geometriya Pro\"* guruhida o'qiysiz!\n\n" +
-                "📘 Bonus kitob faqat faol ishtirokchilarga!\n\n" +
+                "🎯 " + challenge.getRequiredReferralCount() + " ta matematikachi do'st taklif qilsangiz:\n" +
+                "🔥 *Shaxsiy kanalga bepul umrbod kirish!*\n\n" +
+                "📘 Bonus mukofotlar faqat faol ishtirokchilarga!\n\n" +
                 "✨ Imkoniyatni qo'ldan boy bermang!\n\n" +
                 "❗ *Muhim:*\n" +
-                "Ball olish uchun do'stingiz botga kirib, majburiy kanallarga a'zo bo'lib, 10 kun chiqmasligi kerak\n\n" +
+                "Ball olish uchun do'stingiz botga kirib, majburiy kanallarga a'zo bo'lishi kerak\n\n" +
                 "💡 Do'stlaringizni hozir taklif qiling:\n" +
                 "(Havolani olish uchun Takliflarim tugmasini bosing...)\n\n" +
                 "📘 Asosiy menyuga xush kelibsiz!"
             );
             repository.save(informationTemplate);
-            log.info("Initialized default INFORMATION_MESSAGE template");
+            log.info("Initialized default INFORMATION_MESSAGE template for challenge {}", challengeId);
         }
         
         // Initialize STATS_HEADER
-        if (!repository.existsByMessageKey(MessageKey.STATS_HEADER)) {
+        if (!repository.existsByChallengeAndMessageKey(challenge, MessageKey.STATS_HEADER)) {
             MessageTemplate statsTemplate = new MessageTemplate();
+            statsTemplate.setChallenge(challenge);
             statsTemplate.setMessageKey(MessageKey.STATS_HEADER);
             statsTemplate.setText("📊 *Sizning statistikangiz:*\n");
             repository.save(statsTemplate);
-            log.info("Initialized default STATS_HEADER template");
+            log.info("Initialized default STATS_HEADER template for challenge {}", challengeId);
         }
+    }
+    
+    /**
+     * Initialize default templates for all existing challenges
+     */
+    @Transactional
+    public void initializeDefaultTemplatesForAllChallenges() {
+        List<Challenge> allChallenges = challengeRepository.findAll();
+        for (Challenge challenge : allChallenges) {
+            initializeDefaultTemplatesForChallenge(challenge.getId());
+        }
+        log.info("Initialized default templates for {} challenges", allChallenges.size());
     }
 }

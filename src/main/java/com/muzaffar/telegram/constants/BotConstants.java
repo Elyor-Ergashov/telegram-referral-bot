@@ -147,6 +147,7 @@ public final class BotConstants {
     // Admin Bot Callbacks - Menu Navigation
     public static final String CALLBACK_MENU_MAIN = "menu_main";
     public static final String CALLBACK_MAIN_MENU = "main_menu";
+    public static final String CALLBACK_BACK = "back";  // Back button to previous menu
     public static final String CALLBACK_MENU_CHANNELS = "menu_channels";
     public static final String CALLBACK_MENU_SETTINGS = "menu_settings";
     public static final String CALLBACK_MENU_BROADCAST = "menu_broadcast";
@@ -178,6 +179,16 @@ public final class BotConstants {
     public static final String CALLBACK_BROADCAST_INFORMATION_ALL_CONFIRM = "broadcast_information_all_confirm";
     public static final String CALLBACK_BROADCAST_INFORMATION_SINGLE = "broadcast_information_single";
     
+    // Admin Bot Callbacks - Challenge Management
+    public static final String CALLBACK_CHALLENGE_MANAGEMENT = "challenge_management";
+    public static final String CALLBACK_CHALLENGE_CREATE = "challenge_create";
+    public static final String CALLBACK_CHALLENGE_LIST = "challenge_list";
+    public static final String CALLBACK_CHALLENGE_SELECT_PREFIX = "challenge_select_";
+    public static final String CALLBACK_CHALLENGE_SET_MAIN = "challenge_set_main";
+    public static final String CALLBACK_CHALLENGE_TOGGLE_STATUS = "challenge_toggle_status";
+    public static final String CALLBACK_CHALLENGE_DELETE = "challenge_delete";
+    public static final String CALLBACK_CHALLENGE_DELETE_CONFIRM = "challenge_delete_confirm";
+    
     // ==================== Admin State Constants ====================
     
     public static final String STATE_AWAITING_CHANNEL_ID = "AWAITING_CHANNEL_ID";
@@ -190,4 +201,10 @@ public final class BotConstants {
     public static final String STATE_AWAITING_STATS_HEADER = "AWAITING_STATS_HEADER";
     public static final String STATE_AWAITING_STATS_IMAGE = "AWAITING_STATS_IMAGE";
     public static final String STATE_AWAITING_BROADCAST_MESSAGE = "AWAITING_BROADCAST_MESSAGE";
+    
+    // Challenge Creation States
+    public static final String STATE_AWAITING_CHALLENGE_NAME = "AWAITING_CHALLENGE_NAME";
+    public static final String STATE_AWAITING_CHALLENGE_DESCRIPTION = "AWAITING_CHALLENGE_DESCRIPTION";
+    public static final String STATE_AWAITING_CHALLENGE_REFERRAL_COUNT = "AWAITING_CHALLENGE_REFERRAL_COUNT";
+    public static final String STATE_AWAITING_CHALLENGE_PRIVATE_LINK = "AWAITING_CHALLENGE_PRIVATE_LINK";
 }
