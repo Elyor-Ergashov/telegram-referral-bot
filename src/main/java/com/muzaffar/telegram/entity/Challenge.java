@@ -23,9 +23,6 @@ public class Challenge {
     @Column(nullable = false, length = 200)
     private String name;
     
-    @Column(columnDefinition = "TEXT")
-    private String description;
-    
     @Column(nullable = false)
     @Builder.Default
     private Integer requiredReferralCount = 5;

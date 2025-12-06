@@ -28,11 +28,9 @@ public class ChallengeService {
      * Create a new challenge
      */
     @Transactional
-    public Challenge createChallenge(String name, String description, 
-                                    Integer requiredReferralCount, String privateChannelLink) {
+    public Challenge createChallenge(String name, Integer requiredReferralCount, String privateChannelLink) {
         Challenge challenge = Challenge.builder()
                 .name(name)
-                .description(description)
                 .requiredReferralCount(requiredReferralCount)
                 .privateChannelLink(privateChannelLink)
                 .isActive(true)
@@ -102,13 +100,12 @@ public class ChallengeService {
      * Update challenge details
      */
     @Transactional
-    public Challenge updateChallenge(Long challengeId, String name, String description,
+    public Challenge updateChallenge(Long challengeId, String name,
                                     Integer requiredReferralCount, String privateChannelLink) {
         Challenge challenge = challengeRepository.findById(challengeId)
                 .orElseThrow(() -> new IllegalArgumentException("Challenge not found: " + challengeId));
         
         challenge.setName(name);
-        challenge.setDescription(description);
         challenge.setRequiredReferralCount(requiredReferralCount);
         challenge.setPrivateChannelLink(privateChannelLink);
         

@@ -204,7 +204,6 @@ public final class BotConstants {
     
     // Challenge Creation States
     public static final String STATE_AWAITING_CHALLENGE_NAME = "AWAITING_CHALLENGE_NAME";
-    public static final String STATE_AWAITING_CHALLENGE_DESCRIPTION = "AWAITING_CHALLENGE_DESCRIPTION";
     public static final String STATE_AWAITING_CHALLENGE_REFERRAL_COUNT = "AWAITING_CHALLENGE_REFERRAL_COUNT";
     public static final String STATE_AWAITING_CHALLENGE_PRIVATE_LINK = "AWAITING_CHALLENGE_PRIVATE_LINK";
 }

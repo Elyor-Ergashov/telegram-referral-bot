@@ -380,26 +380,10 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         Map<String, String> data = userData.get(chatId);
         data.put("challengeName", name);
         
-        userStates.put(chatId, STATE_AWAITING_CHALLENGE_DESCRIPTION);
-        sendMessage(chatId,
-            "✅ Nom qabul qilindi.\n\n" +
-            "2️⃣ Challenge ta'rifini kiriting:\n\n" +
-            "*Masalan:* Premium kursga kirish imkoniyati",
-            new KeyboardBuilder().addButton("🔙 Orqaga", CALLBACK_CHALLENGE_MANAGEMENT).build());
-    }
-    
-    /**
-     * Handle challenge description input
-     */
-    private void handleChallengeDescriptionInput(Long chatId, String description, Integer messageId) {
-        deleteMessage(chatId, messageId);
-        Map<String, String> data = userData.get(chatId);
-        data.put("challengeDescription", description);
-        
         userStates.put(chatId, STATE_AWAITING_CHALLENGE_REFERRAL_COUNT);
         sendMessage(chatId,
-            "✅ Ta'rif qabul qilindi.\n\n" +
-            "3️⃣ Kerakli referallar sonini kiriting:\n\n" +
+            "✅ Nom qabul qilindi.\n\n" +
+            "2️⃣ Kerakli referallar sonini kiriting:\n\n" +
             "*Masalan:* 5",
             new KeyboardBuilder().addButton("🔙 Orqaga", CALLBACK_CHALLENGE_MANAGEMENT).build());
     }
@@ -424,7 +408,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             userStates.put(chatId, STATE_AWAITING_CHALLENGE_PRIVATE_LINK);
             sendMessage(chatId,
                 "✅ Referallar soni qabul qilindi.\n\n" +
-                "4️⃣ Shaxsiy kanal havolasini kiriting:\n\n" +
+                "3️⃣ Shaxsiy kanal havolasini kiriting:\n\n" +
                 "*Masalan:* https://t.me/+abc123",
                 new KeyboardBuilder().addButton("🔙 Orqaga", CALLBACK_CHALLENGE_MANAGEMENT).build());
         } catch (NumberFormatException e) {
@@ -441,22 +425,20 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         Map<String, String> data = userData.get(chatId);
         
         String name = data.get("challengeName");
-        String description = data.get("challengeDescription");
         int referralCount = Integer.parseInt(data.get("challengeReferralCount"));
         
-        Challenge challenge = challengeService.createChallenge(name, description, referralCount, link.trim());
+        Challenge challenge = challengeService.createChallenge(name, referralCount, link.trim());
         
         sendMessage(chatId,
             String.format(
                 "✅ *Challenge yaratildi!*\n\n" +
                 "🏆 *Nom:* %s\n" +
-                "📝 *Ta'rif:* %s\n" +
                 "🔢 *Referallar:* %d ta\n" +
                 "🔗 *Havola:* `%s`\n\n" +
                 "Challenge faol holga keltirildi.",
-                name, description, referralCount, link
+                name, referralCount, link
             ),
-            new KeyboardBuilder().addButton("� Orqaga", CALLBACK_BACK).build());
+            new KeyboardBuilder().addButton("🔙 Orqaga", CALLBACK_BACK).build());
         
         userStates.remove(chatId);
         userData.remove(chatId);
@@ -907,9 +889,6 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             case STATE_AWAITING_CHALLENGE_NAME:
                 handleChallengeNameInput(chatId, text, messageId);
                 break;
-            case STATE_AWAITING_CHALLENGE_DESCRIPTION:
-                handleChallengeDescriptionInput(chatId, text, messageId);
-                break;
             case STATE_AWAITING_CHALLENGE_REFERRAL_COUNT:
                 handleChallengeReferralCountInput(chatId, text, messageId);
                 break;
@@ -1023,7 +1002,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                     .orElseThrow(() -> new IllegalArgumentException("Challenge not found"));
             
             challengeService.updateChallenge(challengeId, challenge.getName(), 
-                    challenge.getDescription(), count, challenge.getPrivateChannelLink());
+                    count, challenge.getPrivateChannelLink());
             
             sendMessage(chatId, String.format("✅ *Referallar soni o'zgartirildi!*\n\nYangi qiymat: *%d*", count), createBackToMenuButton());
             
@@ -1093,7 +1072,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                 .orElseThrow(() -> new IllegalArgumentException("Challenge not found"));
         
         challengeService.updateChallenge(challengeId, challenge.getName(), 
-                challenge.getDescription(), challenge.getRequiredReferralCount(), link);
+                challenge.getRequiredReferralCount(), link);
         
         sendMessage(chatId, String.format("✅ *Shaxsiy kanal havolasi o'zgartirildi!*\n\nYangi havola: `%s`", link), createBackToMenuButton());
         
