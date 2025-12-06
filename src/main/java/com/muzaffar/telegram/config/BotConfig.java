@@ -14,8 +14,7 @@ public class BotConfig {
     private BotProperties bot;
     private BotProperties adminBot;
     private WebhookProperties webhook;
-    private PrivateChannelProperties privateChannel;
-    
+
     @Data
     public static class BotProperties {
         private String token;
@@ -28,9 +27,5 @@ public class BotConfig {
         private String url;
         private String path = "/webhook";
     }
-    
-    @Data
-    public static class PrivateChannelProperties {
-        private String inviteLink;
-    }
+
 }

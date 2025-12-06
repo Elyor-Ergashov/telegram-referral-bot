@@ -601,7 +601,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                 showBroadcastMenu(chatId, messageId);
                 break;
             case CALLBACK_BROADCAST_INFORMATION_ALL:
-                IonfirmBroadcastinformationAll(chatId, messageId);
+                ConfirmBroadcastInformationAll(chatId, messageId);
                 break;
             case CALLBACK_BROADCAST_INFORMATION_ALL_CONFIRM:
                 IxecuteBroadcastinformationAll(chatId, messageId);
@@ -625,19 +625,19 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                 startSetPrivateLink(chatId, messageId);
                 break;
             case CALLBACK_SETTINGS_INFORMATION:
-                ItartSetInformationMessage(chatId, messageId);
+                StartSetInformationMessage(chatId, messageId);
                 break;
             case CALLBACK_SETTINGS_SET_STATS_TEXT:
                 startSetStatsHeader(chatId, messageId);
                 break;
             case CALLBACK_EDIT_INFORMATION_TEXT:
-                ItartEditinformationText(chatId, messageId);
+                StartEditInformationText(chatId, messageId);
                 break;
             case CALLBACK_EDIT_INFORMATION_IMAGE:
-                ItartEditinformationImage(chatId, messageId);
+                StartEditInformationImage(chatId, messageId);
                 break;
             case CALLBACK_DELETE_INFORMATION_IMAGE:
-                IonfirmDeleteinformationImage(chatId, messageId);
+                ConfirmDeleteInformationImage(chatId, messageId);
                 break;
             case CALLBACK_EDIT_STATS_TEXT:
                 startEditStatsText(chatId, messageId);
@@ -896,7 +896,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
                 handlePrivateLinkInput(chatId, text, messageId);
                 break;
             case STATE_AWAITING_INFORMATION_MESSAGE:
-                IandleinformationMessageInput(chatId, text, messageId);
+                handleInformationMessageInput(chatId, text, messageId);
                 break;
             case STATE_AWAITING_STATS_HEADER:
                 handleStatsHeaderInput(chatId, text, messageId);
@@ -1104,7 +1104,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     /**
      * Start set information message flow - show action menu
      */
-    private void ItartSetInformationMessage(Long chatId, Integer messageId) {
+    private void StartSetInformationMessage(Long chatId, Integer messageId) {
         deleteMessage(chatId, messageId);
         cleanupTempMessages(chatId);
         
@@ -1163,7 +1163,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     /**
      * Handle information message text input
      */
-    private void IandleinformationMessageInput(Long chatId, String text, Integer messageId) {
+    private void handleInformationMessageInput(Long chatId, String text, Integer messageId) {
         String trimmedText = text.trim();
         
         if (trimmedText.isEmpty()) {
@@ -1270,7 +1270,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     /**
      * Start editing information text
      */
-    private void ItartEditinformationText(Long chatId, Integer messageId) {
+    private void StartEditInformationText(Long chatId, Integer messageId) {
         cleanupTempMessages(chatId);
         userStates.put(chatId, STATE_AWAITING_INFORMATION_MESSAGE);
         currentMenuMessageIds.put(chatId, messageId);
@@ -1295,7 +1295,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     /**
      * Start editing information image
      */
-    private void ItartEditinformationImage(Long chatId, Integer messageId) {
+    private void StartEditInformationImage(Long chatId, Integer messageId) {
         cleanupTempMessages(chatId);
         userStates.put(chatId, STATE_AWAITING_INFORMATION_IMAGE);
         
@@ -1327,7 +1327,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     /**
      * Confirm delete information image
      */
-    private void IonfirmDeleteinformationImage(Long chatId, Integer messageId) {
+    private void ConfirmDeleteInformationImage(Long chatId, Integer messageId) {
         cleanupTempMessages(chatId);
         Long challengeId = getCurrentChallengeId(chatId);
         messageTemplateService.getImagePath(challengeId, MessageKey.INFORMATION_MESSAGE).ifPresent(oldPath -> {
@@ -1435,7 +1435,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     /**
      * Confirm broadcast information message to all users across all challenges
      */
-    private void IonfirmBroadcastinformationAll(Long chatId, Integer messageId) {
+    private void ConfirmBroadcastInformationAll(Long chatId, Integer messageId) {
         // Get all challenges
         List<Challenge> challenges = challengeService.getAllChallenges();
         
@@ -1524,7 +1524,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         for (Long userChatId : uniqueUserIds) {
             try {
                 // Send the information message from the currently selected challenge
-                IendinformationMessageToUser(selectedChallengeId, userChatId);
+                SendInformationMessageToUser(selectedChallengeId, userChatId);
                 successCount++;
                 
                 Thread.sleep(BROADCAST_DELAY_MS);
@@ -1616,7 +1616,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         for (Long targetChatId : targetChatIds) {
             try {
                 Long challengeId = getCurrentChallengeId(chatId);
-                IendinformationMessageToUser(challengeId, targetChatId);
+                SendInformationMessageToUser(challengeId, targetChatId);
                 successIds.add(targetChatId);
                 successCount++;
                 
@@ -1677,7 +1677,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
      * Send information message with button to a user
      * If an image exists for information message, sends it as photo with caption
      */
-    private void IendinformationMessageToUser(Long challengeId, Long targetChatId) throws TelegramApiException {
+    private void SendInformationMessageToUser(Long challengeId, Long targetChatId) throws TelegramApiException {
         if (referralBot == null) {
             throw new IllegalStateException("Referral bot not set. Cannot send messages to users.");
         }

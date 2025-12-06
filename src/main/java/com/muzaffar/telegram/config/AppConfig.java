@@ -13,17 +13,11 @@ import java.util.List;
 public class AppConfig {
     
     private AdminProperties admin = new AdminProperties();
-    private ReferralProperties referral = new ReferralProperties();
     private ImagesProperties images = new ImagesProperties();
     
     @Data
     public static class AdminProperties {
         private List<Long> chatIds = new ArrayList<>();
-    }
-    
-    @Data
-    public static class ReferralProperties {
-        private int requiredCount = 5;
     }
     
     @Data
