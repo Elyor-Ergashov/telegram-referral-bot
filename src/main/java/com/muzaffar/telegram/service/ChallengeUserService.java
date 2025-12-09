@@ -117,6 +117,24 @@ public class ChallengeUserService {
     }
     
     /**
+     * Mark user as NOT verified when they leave required channels
+     */
+    @Transactional
+    public void markUserAsUnverified(Long challengeId, Long userChatId) {
+        Challenge challenge = challengeRepository.findById(challengeId)
+                .orElseThrow(() -> new IllegalArgumentException("Challenge not found: " + challengeId));
+        
+        ChallengeUser user = challengeUserRepository.findByChallengeAndUserChatId(challenge, userChatId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found in challenge"));
+        
+        if (Boolean.TRUE.equals(user.getHasVerifiedChannels())) {
+            user.setHasVerifiedChannels(false);
+            challengeUserRepository.save(user);
+            log.info("User {} left required channels in challenge {}. Marked as unverified.", userChatId, challengeId);
+        }
+    }
+    
+    /**
      * Increment referral count
      */
     @Transactional

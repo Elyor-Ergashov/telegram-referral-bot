@@ -120,7 +120,7 @@ public class MessageService {
         
         // Create share button using KeyboardBuilder
         String shareMessage = String.format(
-            "Assalomu alaykum! Geometriya 0 dan yopiq guruhiga bepul kirish + bonus kitob olish uchun shu botga kiring 👉\n%s",
+            "Assalomu alaykum! Yopiq kanalga bepul kirish uchun shu botga kiring 👉\n%s",
             referralLink
         );
         
@@ -200,13 +200,15 @@ public class MessageService {
      * Create private channel invite message
      */
     public String createPrivateChannelMessage(String inviteLink, int count) {
+        // Escape underscores in the invite link to prevent Markdown parsing issues
+        String escapedLink = inviteLink.replace("_", "\\_");
         return String.format(
             "🎉 *Tabriklaymiz!*\n\n" +
             "Siz muvaffaqiyatli %s ta do'stingizni taklif qildingiz va bizning maxsus shaxsiy kanalimizga kirish huquqiga ega bo'ldingiz!\n\n" +
             "🔓 *Qo'shilish uchun quyidagi havolani bosing:*\n%s\n\n" +
             "🌟 Hamjamiyatimizni o'stirishda yordam berish uchun do'stlaringizni taklif qilishda davom eting!",
             count,
-            inviteLink
+            escapedLink
         );
     }
     
@@ -236,7 +238,7 @@ public class MessageService {
         shareButton.setText("📤 Do'stlarimga ulashish");
         
         String shareMessage = String.format(
-            "Assalomu alaykum! Geometriya 0 dan yopiq guruhiga bepul kirish + bonus kitob olish uchun shu botga kiring 👉\n%s",
+            "Assalomu alaykum! Yopiq kanalga bepul kirish uchun shu botga kiring 👉\n%s",
             referralLink
         );
         

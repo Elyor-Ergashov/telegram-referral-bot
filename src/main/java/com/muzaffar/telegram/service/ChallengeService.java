@@ -115,6 +115,21 @@ public class ChallengeService {
     }
     
     /**
+     * Update private channel ID for generating invite links
+     */
+    @Transactional
+    public Challenge updatePrivateChannelId(Long challengeId, String privateChannelId) {
+        Challenge challenge = challengeRepository.findById(challengeId)
+                .orElseThrow(() -> new IllegalArgumentException("Challenge not found: " + challengeId));
+        
+        challenge.setPrivateChannelId(privateChannelId);
+        
+        Challenge updated = challengeRepository.save(challenge);
+        log.info("Updated privateChannelId for challenge {}: {}", challengeId, privateChannelId);
+        return updated;
+    }
+    
+    /**
      * Activate/deactivate challenge
      */
     @Transactional

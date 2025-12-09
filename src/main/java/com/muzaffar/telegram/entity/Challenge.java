@@ -28,7 +28,10 @@ public class Challenge {
     private Integer requiredReferralCount = 5;
     
     @Column(length = 500)
-    private String privateChannelLink;
+    private String privateChannelLink;  // Deprecated: kept for backward compatibility
+    
+    @Column(length = 100)
+    private String privateChannelId;  // Channel ID for creating invite links (e.g., -1001234567890)
     
     @Column(nullable = false)
     @Builder.Default
