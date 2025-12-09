@@ -1,5 +1,6 @@
 package com.muzaffar.telegram.service;
 
+import com.muzaffar.telegram.config.AppConfig;
 import com.muzaffar.telegram.entity.Challenge;
 import com.muzaffar.telegram.entity.InviteLink;
 import com.muzaffar.telegram.entity.InviteLink.InviteLinkStatus;
@@ -15,7 +16,6 @@ import org.telegram.telegrambots.meta.api.objects.ChatInviteLink;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.Optional;
 
 @Slf4j
@@ -25,9 +25,7 @@ public class InviteLinkService {
     
     private final InviteLinkRepository inviteLinkRepository;
     private final ChallengeRepository challengeRepository;
-    
-    // Default expiration time in hours (optional, can be null for no expiration)
-    private static final Integer DEFAULT_EXPIRE_HOURS = 24;
+    private final AppConfig appConfig;
     
     /**
      * Create a one-time invite link for a user in a challenge.
@@ -53,14 +51,18 @@ public class InviteLinkService {
         }
         
         try {
+            // Get config values
+            Integer expireHours = appConfig.getInviteLink().getExpireHours();
+            Integer memberLimit = appConfig.getInviteLink().getMemberLimit();
+            
             // Create the invite link using Telegram API
             CreateChatInviteLink createLink = new CreateChatInviteLink();
             createLink.setChatId(privateChannelId);
-            createLink.setMemberLimit(1);  // Single-use link (cannot be used with createsJoinRequest)
+            createLink.setMemberLimit(memberLimit != null && memberLimit > 0 ? memberLimit : 1);
             
             // Optional: set expiration date
-            if (DEFAULT_EXPIRE_HOURS != null) {
-                int expireDate = (int) (System.currentTimeMillis() / 1000 + DEFAULT_EXPIRE_HOURS * 3600);
+            if (expireHours != null && expireHours > 0) {
+                int expireDate = (int) (System.currentTimeMillis() / 1000 + expireHours * 3600);
                 createLink.setExpireDate(expireDate);
             }
             
@@ -70,8 +72,8 @@ public class InviteLinkService {
             
             // Calculate expiration LocalDateTime
             LocalDateTime expireDateTime = null;
-            if (DEFAULT_EXPIRE_HOURS != null) {
-                expireDateTime = LocalDateTime.now().plusHours(DEFAULT_EXPIRE_HOURS);
+            if (expireHours != null && expireHours > 0) {
+                expireDateTime = LocalDateTime.now().plusHours(expireHours);
             }
             
             // Store the link in database
@@ -85,8 +87,8 @@ public class InviteLinkService {
             
             inviteLinkRepository.save(linkEntity);
             
-            log.info("Created one-time invite link for user {} in challenge {}: {}", 
-                    userChatId, challengeId, linkUrl);
+            log.info("Created invite link for user {} in challenge {} (memberLimit={}, expireHours={}): {}", 
+                    userChatId, challengeId, memberLimit, expireHours, linkUrl);
             
             return linkUrl;
             

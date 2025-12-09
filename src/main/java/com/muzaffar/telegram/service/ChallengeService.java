@@ -28,11 +28,11 @@ public class ChallengeService {
      * Create a new challenge
      */
     @Transactional
-    public Challenge createChallenge(String name, Integer requiredReferralCount, String privateChannelLink) {
+    public Challenge createChallenge(String name, Integer requiredReferralCount, String privateChannelId) {
         Challenge challenge = Challenge.builder()
                 .name(name)
                 .requiredReferralCount(requiredReferralCount)
-                .privateChannelLink(privateChannelLink)
+                .privateChannelId(privateChannelId)
                 .isActive(true)
                 .build();
         
@@ -97,24 +97,6 @@ public class ChallengeService {
     }
     
     /**
-     * Update challenge details
-     */
-    @Transactional
-    public Challenge updateChallenge(Long challengeId, String name,
-                                    Integer requiredReferralCount, String privateChannelLink) {
-        Challenge challenge = challengeRepository.findById(challengeId)
-                .orElseThrow(() -> new IllegalArgumentException("Challenge not found: " + challengeId));
-        
-        challenge.setName(name);
-        challenge.setRequiredReferralCount(requiredReferralCount);
-        challenge.setPrivateChannelLink(privateChannelLink);
-        
-        Challenge updated = challengeRepository.save(challenge);
-        log.info("Updated challenge: {} (ID: {})", name, challengeId);
-        return updated;
-    }
-    
-    /**
      * Update private channel ID for generating invite links
      */
     @Transactional
@@ -126,6 +108,21 @@ public class ChallengeService {
         
         Challenge updated = challengeRepository.save(challenge);
         log.info("Updated privateChannelId for challenge {}: {}", challengeId, privateChannelId);
+        return updated;
+    }
+    
+    /**
+     * Update required referral count for a challenge
+     */
+    @Transactional
+    public Challenge updateRequiredReferralCount(Long challengeId, Integer requiredReferralCount) {
+        Challenge challenge = challengeRepository.findById(challengeId)
+                .orElseThrow(() -> new IllegalArgumentException("Challenge not found: " + challengeId));
+        
+        challenge.setRequiredReferralCount(requiredReferralCount);
+        
+        Challenge updated = challengeRepository.save(challenge);
+        log.info("Updated requiredReferralCount for challenge {}: {}", challengeId, requiredReferralCount);
         return updated;
     }
     

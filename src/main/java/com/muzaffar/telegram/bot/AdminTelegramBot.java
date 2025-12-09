@@ -408,8 +408,9 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             userStates.put(chatId, STATE_AWAITING_CHALLENGE_PRIVATE_LINK);
             sendMessage(chatId,
                 "✅ Referallar soni qabul qilindi.\n\n" +
-                "3️⃣ Shaxsiy kanal havolasini kiriting:\n\n" +
-                "*Masalan:* https://t.me/+abc123",
+                "3️⃣ Shaxsiy kanal ID raqamini kiriting:\n\n" +
+                "*Masalan:* `-1001234567890`\n\n" +
+                "⚠️ Bot shaxsiy kanalda admin bo'lishi kerak!",
                 new KeyboardBuilder().addButton("🔙 Orqaga", CALLBACK_CHALLENGE_MANAGEMENT).build());
         } catch (NumberFormatException e) {
             sendMessage(chatId, "❌ Noto'g'ri format. Faqat raqam kiriting.",
@@ -418,25 +419,35 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     }
     
     /**
-     * Handle challenge private link input
+     * Handle challenge private channel ID input
      */
-    private void handleChallengePrivateLinkInput(Long chatId, String link, Integer messageId) {
+    private void handleChallengePrivateLinkInput(Long chatId, String channelId, Integer messageId) {
+        String trimmedId = channelId.trim();
+        
+        // Validate channel ID format
+        if (!trimmedId.matches("-?\\d+")) {
+            sendMessage(chatId, 
+                "❌ *Noto'g'ri format:*\n\nKanal ID faqat raqamlardan iborat bo'lishi kerak (masalan: `-1001234567890`).\n\nQaytadan kiriting:",
+                new KeyboardBuilder().addButton("🔙 Orqaga", CALLBACK_CHALLENGE_MANAGEMENT).build());
+            return;
+        }
+        
         deleteMessage(chatId, messageId);
         Map<String, String> data = userData.get(chatId);
         
         String name = data.get("challengeName");
         int referralCount = Integer.parseInt(data.get("challengeReferralCount"));
         
-        Challenge challenge = challengeService.createChallenge(name, referralCount, link.trim());
+        Challenge challenge = challengeService.createChallenge(name, referralCount, trimmedId);
         
         sendMessage(chatId,
             String.format(
                 "✅ *Challenge yaratildi!*\n\n" +
                 "🏆 *Nom:* %s\n" +
                 "🔢 *Referallar:* %d ta\n" +
-                "🔗 *Havola:* `%s`\n\n" +
+                "🔗 *Kanal ID:* `%s`\n\n" +
                 "Challenge faol holga keltirildi.",
-                name, referralCount, link
+                name, referralCount, trimmedId
             ),
             new KeyboardBuilder().addButton("🔙 Orqaga", CALLBACK_BACK).build());
         
@@ -490,7 +501,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         InlineKeyboardMarkup keyboard = new KeyboardBuilder()
             .addButton("🔢 Referallar sonini o'zgartirish", CALLBACK_SETTINGS_SET_REFERRALS)
             .newRow()
-            .addButton("🔗 Shaxsiy kanal havolasini o'zgartirish", CALLBACK_SETTINGS_SET_PRIVATE_LINK)
+            .addButton("🔗 Shaxsiy kanal ID o'zgartirish", CALLBACK_SETTINGS_SET_PRIVATE_LINK)
             .newRow()
             .addButton("📝 Information xabarini o'zgartirish", CALLBACK_SETTINGS_INFORMATION)
             .newRow()
@@ -998,11 +1009,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             
             deleteMessage(chatId, messageId);
             
-            Challenge challenge = challengeService.getChallengeById(challengeId)
-                    .orElseThrow(() -> new IllegalArgumentException("Challenge not found"));
-            
-            challengeService.updateChallenge(challengeId, challenge.getName(), 
-                    count, challenge.getPrivateChannelLink());
+            challengeService.updateRequiredReferralCount(challengeId, count);
             
             sendMessage(chatId, String.format("✅ *Referallar soni o'zgartirildi!*\n\nYangi qiymat: *%d*", count), createBackToMenuButton());
             
@@ -1017,7 +1024,7 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
     }
     
     /**
-     * Start set private channel link flow (for current challenge)
+     * Start set private channel ID flow (for one-time invite link generation)
      */
     private void startSetPrivateLink(Long chatId, Integer messageId) {
         Long challengeId = currentChallengeId.get(chatId);
@@ -1032,20 +1039,24 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
         userStates.put(chatId, STATE_AWAITING_PRIVATE_LINK);
         currentMenuMessageIds.put(chatId, messageId);
         
-        String currentLink = challenge.getPrivateChannelLink();
-        if (currentLink == null || currentLink.isEmpty()) {
-            currentLink = "O'rnatilmagan";
+        String currentId = challenge.getPrivateChannelId();
+        if (currentId == null || currentId.isEmpty()) {
+            currentId = "O'rnatilmagan";
         }
         InlineKeyboardMarkup keyboard = new KeyboardBuilder()
             .addButton("🔙 Orqaga", CALLBACK_MENU_SETTINGS)
             .build();
         editMessage(chatId, messageId, 
-            String.format("🔗 *Shaxsiy kanal havolasini o'zgartirish*\n\nHozirgi havola: `%s`\n\nYangi havolani yuboring (Telegram invite link):\n\n*Masalan:* `https://t.me/+abc123`", currentLink),
+            String.format("🔗 *Shaxsiy kanal ID o'zgartirish*\n\n" +
+                "Hozirgi ID: `%s`\n\n" +
+                "Bir martalik havolalar yaratish uchun shaxsiy kanalning *ID raqamini* yuboring.\n\n" +
+                "*Masalan:* `-1001234567890`\n\n" +
+                "⚠️ *Muhim:* Bot shaxsiy kanalda admin bo'lishi kerak!", currentId),
             keyboard);
     }
     
     /**
-     * Handle private channel link input (for current challenge)
+     * Handle private channel ID input (for current challenge)
      */
     private void handlePrivateLinkInput(Long chatId, String text, Integer messageId) {
         Long challengeId = currentChallengeId.get(chatId);
@@ -1056,25 +1067,23 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             return;
         }
         
-        String link = text.trim();
+        String channelId = text.trim();
         
-        if (!link.startsWith("https://t.me/") && !link.startsWith("http://t.me/")) {
+        // Validate channel ID format (should be numeric, optionally with leading minus)
+        if (!channelId.matches("-?\\d+")) {
             InlineKeyboardMarkup keyboard = new KeyboardBuilder()
                 .addButton("🔙 Orqaga", CALLBACK_MENU_SETTINGS)
                 .build();
-            sendMessage(chatId, "❌ *Noto'g'ri format:*\n\nTelegram havolasi bo'lishi kerak (https://t.me/...).\n\nQaytadan kiriting:", keyboard);
+            sendMessage(chatId, "❌ *Noto'g'ri format:*\n\nKanal ID faqat raqamlardan iborat bo'lishi kerak (masalan: `-1001234567890`).\n\nQaytadan kiriting:", keyboard);
             return;
         }
         
         deleteMessage(chatId, messageId);
         
-        Challenge challenge = challengeService.getChallengeById(challengeId)
-                .orElseThrow(() -> new IllegalArgumentException("Challenge not found"));
+        challengeService.updatePrivateChannelId(challengeId, channelId);
         
-        challengeService.updateChallenge(challengeId, challenge.getName(), 
-                challenge.getRequiredReferralCount(), link);
-        
-        sendMessage(chatId, String.format("✅ *Shaxsiy kanal havolasi o'zgartirildi!*\n\nYangi havola: `%s`", link), createBackToMenuButton());
+        sendMessage(chatId, String.format("✅ *Shaxsiy kanal ID o'zgartirildi!*\n\nYangi ID: `%s`\n\n" +
+            "Endi bir martalik havolalar avtomatik yaratiladi.", channelId), createBackToMenuButton());
         
         userStates.remove(chatId);
         currentMenuMessageIds.remove(chatId);

@@ -45,6 +45,9 @@ bot:
     chatIds: ${ADMIN_CHAT_IDS}
   images:
     basePath: ${BOT_IMAGES_BASE_PATH}
+  inviteLink:
+    expireHours: ${INVITE_LINK_EXPIRE_HOURS}
+    memberLimit: ${INVITE_LINK_MEMBER_LIMIT}
 
 server:
   port: 8080
