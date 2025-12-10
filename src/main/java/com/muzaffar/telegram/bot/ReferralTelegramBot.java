@@ -241,11 +241,11 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
             ChallengeUser referrer = challengeUserService.getUserByReferralCode(referralCode).orElse(null);
             
             if (referrer != null && referrer.getChallenge().getId().equals(finalChallenge.getId())) {
-                // Add referral record
-                challengeUserService.addReferral(finalChallenge.getId(), referrer.getUserChatId(), chatId);
+                // Add referral record - only proceed if successfully added
+                boolean referralAdded = challengeUserService.addReferral(finalChallenge.getId(), referrer.getUserChatId(), chatId);
                 
-                // Validate referral (mark as valid since user verified channels)
-                if (challengeUser.getHasVerifiedChannels()) {
+                // Validate referral and notify only if referral was successfully added
+                if (referralAdded && challengeUser.getHasVerifiedChannels()) {
                     challengeUserService.validateReferral(finalChallenge.getId(), referrer.getUserChatId(), chatId);
                     
                     // Notify inviter

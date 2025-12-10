@@ -29,4 +29,18 @@ public interface ChallengeReferralRepository extends JpaRepository<ChallengeRefe
                                                      @Param("referrerChatId") Long referrerChatId);
     
     boolean existsByChallengeAndReferrerChatIdAndReferredChatId(Challenge challenge, Long referrerChatId, Long referredChatId);
+    
+    /**
+     * Check if the referred user has already been referred by anyone in this challenge.
+     * Used to ensure each invited friend is counted only once per challenge.
+     */
+    boolean existsByChallengeAndReferredChatId(Challenge challenge, Long referredChatId);
+    
+    /**
+     * Find the existing referral for a referred user in a challenge (regardless of referrer).
+     * Returns the original referral if the user was already referred.
+     */
+    Optional<ChallengeReferral> findByChallengeAndReferredChatId(Challenge challenge, Long referredChatId);
+
+    boolean existsByChallengeIdAndReferredChatId(Long challengeId, Long referredChatId);
 }

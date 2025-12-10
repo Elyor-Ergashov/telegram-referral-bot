@@ -17,7 +17,9 @@ import java.time.LocalDateTime;
        },
        uniqueConstraints = {
            @UniqueConstraint(name = "uk_challenge_referral", 
-                            columnNames = {"challenge_id", "referrerChatId", "referredChatId"})
+                            columnNames = {"challenge_id", "referrerChatId", "referredChatId"}),
+           @UniqueConstraint(name = "uk_challenge_referred_user", 
+                            columnNames = {"challenge_id", "referredChatId"})
        })
 @Data
 @Builder

@@ -193,18 +193,43 @@ public class ChallengeUserService {
     
     /**
      * Add referral
+     * @return true if referral was successfully added, false if rejected
      */
     @Transactional
-    public void addReferral(Long challengeId, Long referrerChatId, Long referredChatId) {
+    public boolean addReferral(Long challengeId, Long referrerChatId, Long referredChatId) {
         Challenge challenge = challengeRepository.findById(challengeId)
                 .orElseThrow(() -> new IllegalArgumentException("Challenge not found: " + challengeId));
         
-        // Check if referral already exists
+        // Check for circular referral - prevent A→B if B→A already exists
+        if (challengeReferralRepository.existsByChallengeAndReferrerChatIdAndReferredChatId(
+                challenge, referredChatId, referrerChatId)) {
+            log.warn("Circular referral detected: {} already referred {} in challenge {}. Ignoring reverse referral.",
+                    referredChatId, referrerChatId, challengeId);
+            return false;
+        }
+
+        // Check if user already has a referrer (database constraint will also prevent this)
+        if (challengeReferralRepository.existsByChallengeIdAndReferredChatId(
+                challengeId, referredChatId)) {
+            log.warn("User {} already has a referrer in challenge {}. Cannot be referred again by {}.",
+                    referredChatId, challengeId, referrerChatId);
+            return false;
+        }
+        
+        // Check if this exact referral already exists (same referrer + referred)
         if (challengeReferralRepository.existsByChallengeAndReferrerChatIdAndReferredChatId(
                 challenge, referrerChatId, referredChatId)) {
             log.warn("Referral already exists: {} referred {} in challenge {}", 
                     referrerChatId, referredChatId, challengeId);
-            return;
+            return false;
+        }
+        
+        // Check if the referred user has already been referred by ANYONE in this challenge.
+        // Each invited friend should only be counted once for the original inviter.
+        if (challengeReferralRepository.existsByChallengeAndReferredChatId(challenge, referredChatId)) {
+            log.warn("User {} was already referred by someone else in challenge {}. Ignoring referral from {}.", 
+                    referredChatId, challengeId, referrerChatId);
+            return false;
         }
         
         ChallengeReferral referral = ChallengeReferral.builder()
@@ -216,6 +241,7 @@ public class ChallengeUserService {
         
         challengeReferralRepository.save(referral);
         log.info("Added referral: {} referred {} in challenge {}", referrerChatId, referredChatId, challengeId);
+        return true;
     }
     
     /**
