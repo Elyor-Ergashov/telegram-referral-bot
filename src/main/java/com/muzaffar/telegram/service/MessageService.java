@@ -31,7 +31,7 @@ public class MessageService {
         message.setText(
             "*What can this bot do?*\n\n" +
             "Maxsus guruhda Milliy Sertifikat testlarini ishlang va rash modelida tahlil qiling.\n" +
-            "Ega: @Muzaffar_Sakhadinov"
+            "Ega: @Muzaffar\\_Sakhadinov"
         );
         message.setParseMode("Markdown");
         

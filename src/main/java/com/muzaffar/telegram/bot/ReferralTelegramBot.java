@@ -13,6 +13,7 @@ import com.muzaffar.telegram.service.ChallengeUserService;
 import com.muzaffar.telegram.service.InviteLinkService;
 import com.muzaffar.telegram.service.MessageService;
 import com.muzaffar.telegram.service.MessageTemplateService;
+import com.muzaffar.telegram.service.UserSessionService;
 import com.muzaffar.telegram.util.TelegramBotUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -33,9 +34,8 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 
 @Slf4j
 @Component
@@ -49,14 +49,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
     private final ChallengeService challengeService;
     private final ChallengeUserService challengeUserService;
     private final InviteLinkService inviteLinkService;
-    
-    private final Map<Long, String> pendingReferrals = new HashMap<>();
-    
-    // Store users who have seen the introduction message
-    private final Map<Long, Boolean> hasSeenIntro = new HashMap<>();
-    
-    // Store which challenge each user is currently interacting with
-    private final Map<Long, Long> userChallengeContext = new HashMap<>();
+    private final UserSessionService sessionService;
     
     public ReferralTelegramBot(BotConfig botConfig, AppConfig appConfig, 
                       MessageService messageService,
@@ -64,7 +57,8 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
                       TelegramBotUtils botUtils,
                       ChallengeService challengeService,
                       ChallengeUserService challengeUserService,
-                      InviteLinkService inviteLinkService) {
+                      InviteLinkService inviteLinkService,
+                      UserSessionService sessionService) {
         super(botConfig.getBot().getToken());
         this.botConfig = botConfig;
         this.appConfig = appConfig;
@@ -74,6 +68,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
         this.challengeService = challengeService;
         this.challengeUserService = challengeUserService;
         this.inviteLinkService = inviteLinkService;
+        this.sessionService = sessionService;
     }
     
     @Override
@@ -170,25 +165,6 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
         // Fetch active channels once for membership checks
         List<ChallengeChannel> activeChannels = challengeService.getActiveChannelsForChallenge(finalChallenge.getId());
         
-        // Check if user has seen introduction message
-        if (!hasSeenIntro.getOrDefault(chatId, false)) {
-            // Store referral code for later processing
-            if (referralCode != null && !referralCode.isEmpty()) {
-                pendingReferrals.put(chatId, referralCode);
-                log.info("Stored referral code for user {} to process after intro", chatId);
-            }
-            
-            // Show introduction message with START button
-            try {
-                SendMessage introMessage = messageService.createIntroductionMessage(chatId);
-                execute(introMessage);
-                hasSeenIntro.put(chatId, true);
-                return;
-            } catch (TelegramApiException e) {
-                log.error("Error sending introduction message", e);
-            }
-        }
-        
         // If user previously verified, ensure they are still subscribed to all channels
         if (challengeUser.getHasVerifiedChannels() && !activeChannels.isEmpty()) {
             List<ChallengeChannel> missingChannels = getMissingChallengeChannels(chatId, activeChannels);
@@ -197,7 +173,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
                 challengeUserService.markUserAsUnverified(finalChallenge.getId(), chatId);
                 
                 if (referralCode != null && !referralCode.isEmpty()) {
-                    pendingReferrals.put(chatId, referralCode);
+                    sessionService.setPendingReferral(chatId, referralCode);
                 }
                 
                 notifyUserMissingChannels(chatId, missingChannels);
@@ -216,7 +192,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
         if (!challengeUser.getHasVerifiedChannels()) {
             // Store referral code for later processing (after channel verification)
             if (referralCode != null && !referralCode.isEmpty()) {
-                pendingReferrals.put(chatId, referralCode);
+                sessionService.setPendingReferral(chatId, referralCode);
                 log.info("Stored referral code for user {} to process after channel verification", chatId);
             }
             
@@ -433,7 +409,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
     private void sendInformationSequence(Challenge challenge, Long chatId, String firstName) {
         try {
             // Store the challenge context for this user
-            userChallengeContext.put(chatId, challenge.getId());
+            sessionService.setChallengeContext(chatId, challenge.getId());
             
             // 1. Send greeting message first
             SendMessage greetingMessage = messageService.createGreetingMessage(chatId, firstName);
@@ -461,9 +437,9 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
         Challenge challenge = null;
         
         // First check if user has a challenge context (from broadcast or Takliflarim)
-        Long challengeId = userChallengeContext.get(chatId);
-        if (challengeId != null) {
-            challenge = challengeService.getChallengeById(challengeId).orElse(null);
+        Optional<Long> challengeIdOpt = sessionService.getChallengeContext(chatId);
+        if (challengeIdOpt.isPresent()) {
+            challenge = challengeService.getChallengeById(challengeIdOpt.get()).orElse(null);
             if (challenge != null) {
                 log.info("User {} joining challenge {} via START button from context", chatId, challenge.getName());
             }
@@ -471,11 +447,11 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
         
         // If no context, check for referral code
         if (challenge == null) {
-            String referralCode = pendingReferrals.get(chatId);
-            if (referralCode != null && !referralCode.isEmpty()) {
+            Optional<String> referralCodeOpt = sessionService.getPendingReferral(chatId);
+            if (referralCodeOpt.isPresent()) {
+                String referralCode = referralCodeOpt.get();
                 ChallengeUser referrer = challengeUserService.getUserByReferralCode(referralCode).orElse(null);
                 if (referrer != null) {
-
                     Long refChallengeId = referrer.getChallenge().getId();
                     challenge = challengeService.getChallengeById(refChallengeId).orElse(null);
                     if (challenge != null) {
@@ -534,12 +510,12 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
      */
     private void handleMyReferrals(Long chatId, String username, String firstName, String lastName) {
         // Get challenge from user context (which information message they received)
-        Long challengeId = userChallengeContext.get(chatId);
+        Optional<Long> challengeIdOpt = sessionService.getChallengeContext(chatId);
         
         Challenge challenge;
-        if (challengeId != null) {
+        if (challengeIdOpt.isPresent()) {
             // User has a challenge context - use it
-            challenge = challengeService.getChallengeById(challengeId).orElse(null);
+            challenge = challengeService.getChallengeById(challengeIdOpt.get()).orElse(null);
             if (challenge == null) {
                 // Challenge no longer exists, fall back to default
                 challenge = challengeService.getDefaultChallenge().orElse(null);
@@ -770,9 +746,9 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
         Challenge challenge = null;
         
         // First check if user has a challenge context (from broadcast or Takliflarim)
-        Long challengeId = userChallengeContext.get(chatId);
-        if (challengeId != null) {
-            challenge = challengeService.getChallengeById(challengeId).orElse(null);
+        Optional<Long> challengeIdOpt = sessionService.getChallengeContext(chatId);
+        if (challengeIdOpt.isPresent()) {
+            challenge = challengeService.getChallengeById(challengeIdOpt.get()).orElse(null);
             if (challenge != null) {
                 log.info("User {} verifying channels for challenge {} from context", chatId, challenge.getName());
             }
@@ -780,8 +756,9 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
         
         // If no context, check for referral code
         if (challenge == null) {
-            String referralCode = pendingReferrals.get(chatId);
-            if (referralCode != null && !referralCode.isEmpty()) {
+            Optional<String> referralCodeOpt = sessionService.getPendingReferral(chatId);
+            if (referralCodeOpt.isPresent()) {
+                String referralCode = referralCodeOpt.get();
                 ChallengeUser referrer = challengeUserService.getUserByReferralCode(referralCode).orElse(null);
                 if (referrer != null) {
                     // Fetch the full challenge object to avoid LazyInitializationException
@@ -960,12 +937,13 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
         //          2) pendingReferrals (from referral link)
         //          3) default challenge
         Challenge challenge = null;
-        String referralCode = pendingReferrals.get(chatId); // Declare at method level for later use
+        Optional<String> referralCodeOpt = sessionService.getPendingReferral(chatId); // Declare at method level for later use
+        String referralCode = referralCodeOpt.orElse(null);
         
         // First check if user has a challenge context (from broadcast or Takliflarim)
-        Long challengeId = userChallengeContext.get(chatId);
-        if (challengeId != null) {
-            challenge = challengeService.getChallengeById(challengeId).orElse(null);
+        Optional<Long> challengeIdOpt = sessionService.getChallengeContext(chatId);
+        if (challengeIdOpt.isPresent()) {
+            challenge = challengeService.getChallengeById(challengeIdOpt.get()).orElse(null);
             if (challenge != null) {
                 log.info("User {} sending information after verification for challenge {} from context", chatId, challenge.getName());
             }
@@ -1004,7 +982,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
                 challengeUserService.addReferral(challenge.getId(), referrer.getUserChatId(), chatId);
                 // Validate immediately since user has verified channels
                 challengeUserService.validateReferral(challenge.getId(), referrer.getUserChatId(), chatId);
-                pendingReferrals.remove(chatId);
+                sessionService.clearPendingReferral(chatId);
                 
                 // Notify referrer
                 try {
@@ -1081,7 +1059,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
                 }
             } else {
                 // Referral failed, remove from pending
-                pendingReferrals.remove(chatId);
+                sessionService.clearPendingReferral(chatId);
             }
         }
         
@@ -1223,7 +1201,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
      * Set the challenge context for a user (used by AdminTelegramBot for broadcasts)
      */
     public void setUserChallengeContext(Long chatId, Long challengeId) {
-        userChallengeContext.put(chatId, challengeId);
+        sessionService.setChallengeContext(chatId, challengeId);
     }
     
     // Uses InviteLinkService.createOneTimeInviteLink() to generate unique single-use invite links per user
