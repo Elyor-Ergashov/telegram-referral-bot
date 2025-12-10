@@ -75,18 +75,18 @@ public class MessageService {
     /**
      * Create stats message with share button, showing active and left referrals
      */
-    public SendMessage createStatsMessageWithButton(Long challengeId, Long chatId, String botUsername, String referralCode, 
-                                                   int totalReferralCount, int indirectReferralCount, 
-                                                   int activeCount, int leftCount, int requiredCount) {
+    public SendMessage createStatsMessageWithButton(Long challengeId, Long chatId, String botUsername, String referralCode,
+                                                    int totalReferralCount, int indirectReferralCount,
+                                                    int activeCount, int leftCount, int requiredCount) {
         SendMessage message = new SendMessage();
         message.setChatId(chatId.toString());
-        
+
         String referralLink = String.format("https://t.me/%s?start=%s", botUsername, referralCode);
         int remaining = Math.max(0, requiredCount - activeCount);
         int totalInvites = totalReferralCount + indirectReferralCount;
-        
+
         StringBuilder text = new StringBuilder();
-        
+
         // Add optional header text from database for this challenge
         String headerText = messageTemplateService.getText(challengeId, MessageKey.STATS_HEADER);
         if (headerText != null && !headerText.isEmpty()) {
@@ -117,22 +117,36 @@ public class MessageService {
         
         message.setText(text.toString());
         message.setParseMode("Markdown");
-        
-        // Create share button using KeyboardBuilder
-        String shareMessage = String.format(
-            "Assalomu alaykum! Yopiq kanalga bepul kirish uchun shu botga kiring 👉\n%s",
-            referralLink
-        );
-        
+
+        // Build share message with STATS_HEADER at the top
+        StringBuilder shareMessageBuilder = new StringBuilder();
+
+        // Add STATS_HEADER to share message (remove markdown formatting)
+        if (headerText != null && !headerText.isEmpty()) {
+            String plainHeader = headerText.replace("*", "").replace("_", "").replace("`", "").trim();
+            // Limit to 1000 chars to keep URL manageable
+            if (plainHeader.length() > 1000) {
+                plainHeader = plainHeader.substring(0, 1000) + "...";
+            }
+            shareMessageBuilder.append("\n").append(plainHeader).append("\n\n");
+        }
+
+        shareMessageBuilder.append("Yopiq kanalga bepul kirish uchun shu botga kiring 👉\n");
+        shareMessageBuilder.append(referralLink);
+
+        String shareMessage = shareMessageBuilder.toString();
+
         String shareUrl = String.format(
-            "https://t.me/share/url?url=%s&text=%s",
-            java.net.URLEncoder.encode(referralLink, java.nio.charset.StandardCharsets.UTF_8),
-            java.net.URLEncoder.encode(shareMessage, java.nio.charset.StandardCharsets.UTF_8)
+                "https://t.me/share/url?url=%s&text=%s",
+                java.net.URLEncoder.encode(referralLink, java.nio.charset.StandardCharsets.UTF_8),
+                java.net.URLEncoder.encode(shareMessage, java.nio.charset.StandardCharsets.UTF_8)
         );
-        
+
+        log.info("Share URL length: {}, URL: {}", shareUrl.length(), shareUrl);
+
         InlineKeyboardMarkup keyboard = KeyboardBuilder.singleUrlButton("📤 Do'stlarimga ulashish", shareUrl);
         message.setReplyMarkup(keyboard);
-        
+
         return message;
     }
     
