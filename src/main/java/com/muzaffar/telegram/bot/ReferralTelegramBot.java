@@ -250,7 +250,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
                             // Verify all referred users are still in channels before sending reward
                             ReferralVerificationResult verification = verifyReferredUsersWithCounts(finalChallenge, referrer.getUserChatId());
                             
-                            if (verification.allStillInChannels) {
+                            if (verification.activeReferrals >= finalChallenge.getRequiredReferralCount()) {
                                 // Small delay before sending private channel link
                                 Thread.sleep(500);
                                 
@@ -266,15 +266,16 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
                                     sendMessage(referrer.getUserChatId(), linkMessage);
                                     challengeUserService.markRewardSent(finalChallenge.getId(), referrer.getUserChatId());
                                     
-                                    log.info("Automatically sent one-time private channel link to referrer {} after reaching {} referrals", 
-                                        referrer.getUserChatId(), validReferrals);
+                                    log.info("Automatically sent one-time private channel link to referrer {} after reaching {} referrals (active: {}, left: {})", 
+                                        referrer.getUserChatId(), validReferrals, verification.activeReferrals, verification.leftChannels);
                                 } else {
                                     log.error("Failed to generate invite link for referrer {}", referrer.getUserChatId());
                                     sendMessage(referrer.getUserChatId(), "❌ Xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.");
                                 }
                             } else {
-                                log.warn("Some referred users left channels, not sending private link to referrer {}", 
-                                    referrer.getUserChatId());
+                                log.warn("Referrer {} has only {} active referrals (required: {}, left channel: {})", 
+                                    referrer.getUserChatId(), verification.activeReferrals, 
+                                    finalChallenge.getRequiredReferralCount(), verification.leftChannels);
                                 
                                 // Calculate indirect referrals for referrer
                                 long referrerIndirectReferrals = challengeUserService.getIndirectReferralCount(
@@ -610,8 +611,8 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
                     // Verify all referred users are still in channels before sending reward
                     ReferralVerificationResult verification = verifyReferredUsersWithCounts(challenge, chatId);
                     
-                    if (verification.allStillInChannels && verification.activeReferrals >= challenge.getRequiredReferralCount()) {
-                        // User has enough referrals and all are still active - generate one-time invite link
+                    if (verification.activeReferrals >= challenge.getRequiredReferralCount()) {
+                        // User has enough active referrals - generate one-time invite link
                         String inviteLink = inviteLinkService.createOneTimeInviteLink(
                             this, challenge.getId(), chatId);
                         
@@ -622,16 +623,17 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
                             );
                             sendMessage(chatId, linkMessage);
                             challengeUserService.markRewardSent(challenge.getId(), chatId);
-                            log.info("User {} received one-time private channel link for challenge {} with {} active referrals", 
-                                chatId, challenge.getId(), verification.activeReferrals);
+                            log.info("User {} received one-time private channel link for challenge {} with {} active referrals (left: {})", 
+                                chatId, challenge.getId(), verification.activeReferrals, verification.leftChannels);
                         } else {
                             log.error("Failed to generate invite link for user {}", chatId);
                             sendMessage(chatId, "❌ Xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.");
                         }
                     } else {
-                        // Some referred users left channels or not enough active referrals
-                        log.warn("User {} has {} total referrals but only {} active (left: {})", 
-                            chatId, verification.totalReferrals, verification.activeReferrals, verification.leftChannels);
+                        // Not enough active referrals
+                        log.warn("User {} has {} total referrals but only {} active (required: {}, left: {})", 
+                            chatId, verification.totalReferrals, verification.activeReferrals, 
+                            challenge.getRequiredReferralCount(), verification.leftChannels);
                         
                         SendMessage insufficientMessage = messageService.createInsufficientActiveReferralsMessage(
                             chatId,
@@ -1010,7 +1012,7 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
                         // Verify all referred users are still in channels before sending reward
                         ReferralVerificationResult verification = verifyReferredUsersWithCounts(challenge, referrer.getUserChatId());
                         
-                        if (verification.allStillInChannels) {
+                        if (verification.activeReferrals >= challenge.getRequiredReferralCount()) {
                             // Small delay before sending private channel link
                             Thread.sleep(500);
                             
@@ -1026,15 +1028,16 @@ public class ReferralTelegramBot extends TelegramLongPollingBot {
                                 sendMessage(referrer.getUserChatId(), linkMessage);
                                 challengeUserService.markRewardSent(challenge.getId(), referrer.getUserChatId());
                                 
-                                log.info("Automatically sent one-time private channel link to referrer {} after reaching {} referrals", 
-                                    referrer.getUserChatId(), validReferrals);
+                                log.info("Automatically sent one-time private channel link to referrer {} after reaching {} referrals (active: {}, left: {})", 
+                                    referrer.getUserChatId(), validReferrals, verification.activeReferrals, verification.leftChannels);
                             } else {
                                 log.error("Failed to generate invite link for referrer {}", referrer.getUserChatId());
                                 sendMessage(referrer.getUserChatId(), "❌ Xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.");
                             }
                         } else {
-                            log.warn("Some referred users left channels, not sending private link to referrer {}", 
-                                referrer.getUserChatId());
+                            log.warn("Referrer {} has only {} active referrals (required: {}, left channel: {})", 
+                                referrer.getUserChatId(), verification.activeReferrals, 
+                                challenge.getRequiredReferralCount(), verification.leftChannels);
                             
                             // Calculate indirect referrals for referrer
                             long referrerIndirectReferrals = challengeUserService.getIndirectReferralCount(
