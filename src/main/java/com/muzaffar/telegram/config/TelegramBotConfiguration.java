@@ -15,23 +15,20 @@ import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 @Configuration
 @RequiredArgsConstructor
 public class TelegramBotConfiguration {
-    
+
     private final ReferralTelegramBot telegramBot;
     private final AdminTelegramBot adminBot;
-    
+
     @EventListener(ContextRefreshedEvent.class)
     public void init() {
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            
+
             botsApi.registerBot(telegramBot);
             log.info("✅ User bot registered successfully with LONG POLLING mode");
             log.info("User bot username: @{}", telegramBot.getBotUsername());
-            
+
             if (adminBot.getBotToken() != null && !adminBot.getBotToken().isEmpty()) {
-                // Connect admin bot to referral bot for broadcasting
-                adminBot.setReferralBot(telegramBot);
-                
                 botsApi.registerBot(adminBot);
                 log.info("✅ Admin bot registered successfully with LONG POLLING mode");
                 log.info("Admin bot username: @{}", adminBot.getBotUsername());

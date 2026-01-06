@@ -5,180 +5,180 @@ package com.muzaffar.telegram.constants;
  * Centralizes magic numbers and strings for better maintainability.
  */
 public final class BotConstants {
-    
+
     private BotConstants() {
         throw new AssertionError("Cannot instantiate constants class");
     }
-    
+
     // ==================== Timing Constants ====================
-    
+
     /**
      * Delay between broadcast messages to avoid Telegram rate limits (milliseconds)
      */
     public static final int BROADCAST_DELAY_MS = 50;
-    
+
     /**
      * Delay between information sequence messages for better UX (milliseconds)
      */
     public static final int INFORMATION_SEQUENCE_DELAY_MS = 500;
-    
+
     /**
      * Delay before retrying failed operations (milliseconds)
      */
     public static final int RETRY_DELAY_MS = 1000;
-    
+
     // ==================== Command Constants ====================
-    
+
     /**
      * Start command text
      */
     public static final String START_COMMAND = "/start";
-    
+
     /**
      * Length of "/start " including space
      */
     public static final int START_COMMAND_PREFIX_LENGTH = 7;
-    
+
     /**
      * Admin broadcast command text
      */
     public static final String ADMIN_BROADCAST_COMMAND = "/admin_broadcast";
-    
+
     /**
      * Length of "/admin_broadcast " including space
      */
     public static final int ADMIN_BROADCAST_PREFIX_LENGTH = 16;
-    
+
     /**
      * Stats command text
      */
     public static final String STATS_COMMAND = "/stats";
-    
+
     /**
      * Menu command text (admin)
      */
     public static final String MENU_COMMAND = "/menu";
-    
+
     /**
      * Admin stats command text
      */
     public static final String ADMIN_STATS_COMMAND = "/admin_stats";
-    
+
     // ==================== Image Upload Constants ====================
-    
+
     /**
      * Maximum file size for image uploads in megabytes
      */
     public static final int MAX_FILE_SIZE_MB = 5;
-    
+
     /**
      * Maximum file size for image uploads in bytes
      */
     public static final long MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024L * 1024L;
-    
+
     /**
      * Relative directory for storing bot images
      */
     public static final String IMAGES_RELATIVE_DIRECTORY = "bot_images/stats_headers/";
-    
+
     // ==================== Default Values ====================
-    
+
     /**
      * Default required referral count for accessing private channel
      */
     public static final int DEFAULT_REQUIRED_REFERRAL_COUNT = 5;
-    
+
     /**
      * Default private channel invite link (empty)
      */
     public static final String DEFAULT_PRIVATE_CHANNEL_LINK = "";
-    
+
     // ==================== Button Text Constants ====================
-    
+
     /**
      * "My Referrals" button text in Uzbek
      */
     public static final String BUTTON_MY_REFERRALS = "📊 Takliflarim";
-    
+
     /**
      * "Get Private Channel" button text in Uzbek
      */
     public static final String BUTTON_GET_PRIVATE_CHANNEL = "🔐 Maxfiy kanalni olish";
-    
+
     /**
      * "Share" button text in Uzbek
      */
     public static final String BUTTON_SHARE = "📤 Ulashish";
-    
+
     /**
      * "Check Subscription" button text in Uzbek
      */
     public static final String BUTTON_CHECK_SUBSCRIPTION = "✅ Obunani tekshirish";
-    
+
     /**
      * "START" button text
      */
     public static final String BUTTON_START = "START";
-    
+
     /**
      * "I joined" button text in Uzbek
      */
     public static final String BUTTON_I_JOINED = "✅ A'zo bo'ldim";
-    
+
     /**
      * "Menu" button text in Uzbek (Admin)
      */
     public static final String BUTTON_MENU = "📋 Menyu";
-    
+
     /**
      * "Cancel" button text in Uzbek (Admin)
      */
     public static final String BUTTON_CANCEL = "❌ Bekor qilish";
-    
+
     // ==================== Callback Data Constants ====================
-    
+
     // User Bot Callbacks
     public static final String CALLBACK_START_BOT = "start_bot";
     public static final String CALLBACK_VERIFY_CHANNELS = "verify_channels";
     public static final String CALLBACK_MY_REFERRALS = "my_referrals";
     public static final String CALLBACK_GET_PRIVATE_CHANNEL = "get_private_channel";
     public static final String CALLBACK_CHECK_SUBSCRIPTION = "check_subscription";
-    
+
     // Admin Bot Callbacks - Menu Navigation
     public static final String CALLBACK_MENU_MAIN = "menu_main";
     public static final String CALLBACK_MAIN_MENU = "main_menu";
-    public static final String CALLBACK_BACK = "back";  // Back button to previous menu
+    public static final String CALLBACK_BACK = "back"; // Back button to previous menu
     public static final String CALLBACK_MENU_CHANNELS = "menu_channels";
     public static final String CALLBACK_MENU_SETTINGS = "menu_settings";
     public static final String CALLBACK_MENU_BROADCAST = "menu_broadcast";
     public static final String CALLBACK_CANCEL_OPERATION = "cancel_operation";
-    
+
     // Admin Bot Callbacks - Channel Management
     public static final String CALLBACK_CHANNEL_ADD = "channel_add";
     public static final String CALLBACK_CHANNEL_LIST = "channel_list";
     public static final String CALLBACK_CHANNEL_REMOVE = "channel_remove";
-    
+
     // Admin Bot Callbacks - Settings
     public static final String CALLBACK_SETTINGS_SET_REFERRALS = "settings_set_referrals";
     public static final String CALLBACK_SETTINGS_SET_PRIVATE_LINK = "settings_set_private_link";
     public static final String CALLBACK_SETTINGS_INFORMATION = "settings_information";
     public static final String CALLBACK_SETTINGS_SET_STATS_TEXT = "settings_set_stats_text";
-    
+
     // Admin Bot Callbacks - Information Message
     public static final String CALLBACK_EDIT_INFORMATION_TEXT = "edit_information_text";
     public static final String CALLBACK_EDIT_INFORMATION_IMAGE = "edit_information_image";
     public static final String CALLBACK_DELETE_INFORMATION_IMAGE = "delete_information_image";
-    
+
     // Admin Bot Callbacks - Stats Header
     public static final String CALLBACK_EDIT_STATS_TEXT = "edit_stats_text";
     public static final String CALLBACK_EDIT_STATS_IMAGE = "edit_stats_image";
     public static final String CALLBACK_DELETE_STATS_IMAGE = "delete_stats_image";
-    
+
     // Admin Bot Callbacks - Broadcast
     public static final String CALLBACK_BROADCAST_INFORMATION_ALL = "broadcast_information_all";
     public static final String CALLBACK_BROADCAST_INFORMATION_ALL_CONFIRM = "broadcast_information_all_confirm";
     public static final String CALLBACK_BROADCAST_INFORMATION_SINGLE = "broadcast_information_single";
-    
+
     // Admin Bot Callbacks - Challenge Management
     public static final String CALLBACK_CHALLENGE_MANAGEMENT = "challenge_management";
     public static final String CALLBACK_CHALLENGE_CREATE = "challenge_create";
@@ -188,9 +188,9 @@ public final class BotConstants {
     public static final String CALLBACK_CHALLENGE_TOGGLE_STATUS = "challenge_toggle_status";
     public static final String CALLBACK_CHALLENGE_DELETE = "challenge_delete";
     public static final String CALLBACK_CHALLENGE_DELETE_CONFIRM = "challenge_delete_confirm";
-    
+
     // ==================== Admin State Constants ====================
-    
+
     public static final String STATE_AWAITING_CHANNEL_ID = "AWAITING_CHANNEL_ID";
     public static final String STATE_AWAITING_CHANNEL_NAME = "AWAITING_CHANNEL_NAME";
     public static final String STATE_AWAITING_CHANNEL_USERNAME = "AWAITING_CHANNEL_USERNAME";
@@ -201,7 +201,7 @@ public final class BotConstants {
     public static final String STATE_AWAITING_STATS_HEADER = "AWAITING_STATS_HEADER";
     public static final String STATE_AWAITING_STATS_IMAGE = "AWAITING_STATS_IMAGE";
     public static final String STATE_AWAITING_BROADCAST_MESSAGE = "AWAITING_BROADCAST_MESSAGE";
-    
+
     // Challenge Creation States
     public static final String STATE_AWAITING_CHALLENGE_NAME = "AWAITING_CHALLENGE_NAME";
     public static final String STATE_AWAITING_CHALLENGE_REFERRAL_COUNT = "AWAITING_CHALLENGE_REFERRAL_COUNT";
