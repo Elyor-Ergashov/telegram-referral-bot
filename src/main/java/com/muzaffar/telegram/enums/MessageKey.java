@@ -5,5 +5,5 @@ package com.muzaffar.telegram.enums;
  */
 public enum MessageKey {
     INFORMATION_MESSAGE,
-    STATS_HEADER
+    FORWARD_MESSAGE
 }

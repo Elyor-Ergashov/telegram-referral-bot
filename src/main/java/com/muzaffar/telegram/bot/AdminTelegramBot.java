@@ -168,8 +168,8 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             case STATE_AWAITING_INFORMATION_MESSAGE:
                 settingsHandler.handleInformationMessageInput(chatId, text, messageId);
                 break;
-            case STATE_AWAITING_STATS_HEADER:
-                settingsHandler.handleStatsHeaderInput(chatId, text, messageId);
+            case STATE_AWAITING_FORWARD_MESSAGE:
+                settingsHandler.handleForwardMessageInput(chatId, text, messageId);
                 break;
             case STATE_AWAITING_BROADCAST_MESSAGE:
                 broadcastHandler.handleBroadcastUserIdInput(chatId, text, messageId);
@@ -262,18 +262,18 @@ public class AdminTelegramBot extends TelegramLongPollingBot {
             case CALLBACK_DELETE_INFORMATION_IMAGE:
                 settingsHandler.confirmDeleteInformationImage(chatId, messageId);
                 break;
-            case CALLBACK_SETTINGS_SET_STATS_TEXT:
+            case CALLBACK_SETTINGS_SET_FORWARD_MESSAGE:
                 navigationHandler.pushNavigation(chatId, CALLBACK_MENU_SETTINGS);
-                settingsHandler.startSetStatsHeader(chatId, messageId);
+                settingsHandler.startSetForwardMessage(chatId, messageId);
                 break;
-            case CALLBACK_EDIT_STATS_TEXT:
-                settingsHandler.startEditStatsText(chatId, messageId);
+            case CALLBACK_EDIT_FORWARD_TEXT:
+                settingsHandler.startEditForwardText(chatId, messageId);
                 break;
-            case CALLBACK_EDIT_STATS_IMAGE:
-                settingsHandler.startEditStatsImage(chatId, messageId);
+            case CALLBACK_EDIT_FORWARD_IMAGE:
+                settingsHandler.startEditForwardImage(chatId, messageId);
                 break;
-            case CALLBACK_DELETE_STATS_IMAGE:
-                settingsHandler.confirmDeleteStatsImage(chatId, messageId);
+            case CALLBACK_DELETE_FORWARD_IMAGE:
+                settingsHandler.confirmDeleteForwardImage(chatId, messageId);
                 break;
 
             // Broadcast

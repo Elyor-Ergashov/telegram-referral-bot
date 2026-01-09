@@ -30,6 +30,7 @@ public class StatsCommandHandler implements BotHandler {
     private final ChallengeUserService challengeUserService;
     private final MessageService messageService;
     private final TelegramBotUtils botUtils;
+    private final ChannelVerificationHandler channelVerificationHandler;
 
     private Supplier<TelegramLongPollingBot> botSupplier;
     private Supplier<String> botUsernameSupplier;
@@ -75,11 +76,61 @@ public class StatsCommandHandler implements BotHandler {
             return;
         }
 
-        String statsMessage = messageService.createStatsMessage(
-                botUsernameSupplier.get(),
-                challengeUser.getReferralCode(),
-                challengeUser.getReferralCount(),
-                challenge.getRequiredReferralCount());
-        botUtils.sendMessage(botSupplier.get(), chatId, statsMessage);
+        // Calculate detailed stats (Active vs Left)
+        int totalReferrals = 0;
+        int activeCount = 0;
+        int leftCount = 0;
+
+        try {
+            java.util.List<Long> referredUserIds = challengeUserService.getValidReferredUserIds(
+                    challenge.getId(), chatId);
+            totalReferrals = referredUserIds.size();
+
+            if (!referredUserIds.isEmpty()) {
+                java.util.List<com.muzaffar.telegram.entity.ChallengeChannel> channels = challengeService
+                        .getActiveChannelsForChallenge(challenge.getId());
+
+                if (channels.isEmpty()) {
+                    activeCount = totalReferrals;
+                } else {
+                    for (Long referredUserId : referredUserIds) {
+                        boolean userStillInAllChannels = true;
+
+                        for (com.muzaffar.telegram.entity.ChallengeChannel channel : channels) {
+                            if (!channelVerificationHandler.isUserMemberOfChallengeChannel(referredUserId, channel)) {
+                                userStillInAllChannels = false;
+                                break;
+                            }
+                        }
+
+                        if (userStillInAllChannels) {
+                            activeCount++;
+                        } else {
+                            leftCount++;
+                        }
+                    }
+                }
+            }
+
+            long indirectReferralCount = challengeUserService.getIndirectReferralCount(challenge.getId(), chatId);
+
+            org.telegram.telegrambots.meta.api.methods.send.SendMessage statsMessage = messageService
+                    .createStatsMessageWithButton(
+                            challenge.getId(),
+                            chatId,
+                            botUsernameSupplier.get(),
+                            challengeUser.getReferralCode(),
+                            totalReferrals,
+                            (int) indirectReferralCount,
+                            activeCount,
+                            leftCount,
+                            challenge.getRequiredReferralCount());
+
+            botSupplier.get().execute(statsMessage);
+
+        } catch (Exception e) {
+            log.error("Error calculating stats for user {}", chatId, e);
+            botUtils.sendMessage(botSupplier.get(), chatId, "❌ Statistika hisoblashda xatolik yuz berdi.");
+        }
     }
 }

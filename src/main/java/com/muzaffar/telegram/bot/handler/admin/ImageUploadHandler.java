@@ -58,8 +58,8 @@ public class ImageUploadHandler {
         MessageKey templateKey;
         if (STATE_AWAITING_INFORMATION_MESSAGE.equals(state) || STATE_AWAITING_INFORMATION_IMAGE.equals(state)) {
             templateKey = MessageKey.INFORMATION_MESSAGE;
-        } else if (STATE_AWAITING_STATS_HEADER.equals(state) || STATE_AWAITING_STATS_IMAGE.equals(state)) {
-            templateKey = MessageKey.STATS_HEADER;
+        } else if (STATE_AWAITING_FORWARD_MESSAGE.equals(state) || STATE_AWAITING_FORWARD_IMAGE.equals(state)) {
+            templateKey = MessageKey.FORWARD_MESSAGE;
         } else {
             InlineKeyboardMarkup keyboard = new KeyboardBuilder()
                     .addButton("🔙 Orqaga", CALLBACK_CANCEL_OPERATION)
@@ -78,7 +78,7 @@ public class ImageUploadHandler {
             if (photo == null) {
                 String backCallback = templateKey == MessageKey.INFORMATION_MESSAGE
                         ? CALLBACK_SETTINGS_INFORMATION
-                        : CALLBACK_SETTINGS_SET_STATS_TEXT;
+                        : CALLBACK_SETTINGS_SET_FORWARD_MESSAGE;
                 InlineKeyboardMarkup keyboard = new KeyboardBuilder()
                         .addButton("🔙 Orqaga", backCallback)
                         .build();
@@ -104,7 +104,7 @@ public class ImageUploadHandler {
             log.error("Error handling photo upload", e);
             String backCallback = STATE_AWAITING_INFORMATION_IMAGE.equals(stateManager.getState(chatId))
                     ? CALLBACK_SETTINGS_INFORMATION
-                    : CALLBACK_SETTINGS_SET_STATS_TEXT;
+                    : CALLBACK_SETTINGS_SET_FORWARD_MESSAGE;
             InlineKeyboardMarkup keyboard = new KeyboardBuilder()
                     .addButton("🔙 Orqaga", backCallback)
                     .build();
@@ -121,8 +121,8 @@ public class ImageUploadHandler {
         MessageKey templateKey;
         if (STATE_AWAITING_INFORMATION_MESSAGE.equals(state) || STATE_AWAITING_INFORMATION_IMAGE.equals(state)) {
             templateKey = MessageKey.INFORMATION_MESSAGE;
-        } else if (STATE_AWAITING_STATS_HEADER.equals(state) || STATE_AWAITING_STATS_IMAGE.equals(state)) {
-            templateKey = MessageKey.STATS_HEADER;
+        } else if (STATE_AWAITING_FORWARD_MESSAGE.equals(state) || STATE_AWAITING_FORWARD_IMAGE.equals(state)) {
+            templateKey = MessageKey.FORWARD_MESSAGE;
         } else {
             InlineKeyboardMarkup keyboard = new KeyboardBuilder()
                     .addButton("🔙 Orqaga", CALLBACK_MENU_SETTINGS)
@@ -138,7 +138,7 @@ public class ImageUploadHandler {
             if (document == null) {
                 String backCallback = templateKey == MessageKey.INFORMATION_MESSAGE
                         ? CALLBACK_SETTINGS_INFORMATION
-                        : CALLBACK_SETTINGS_SET_STATS_TEXT;
+                        : CALLBACK_SETTINGS_SET_FORWARD_MESSAGE;
                 InlineKeyboardMarkup keyboard = new KeyboardBuilder()
                         .addButton("🔙 Orqaga", backCallback)
                         .build();
@@ -152,7 +152,7 @@ public class ImageUploadHandler {
             if (mimeType == null || (!mimeType.startsWith("image/") && !isImageFile(fileName))) {
                 String backCallback = templateKey == MessageKey.INFORMATION_MESSAGE
                         ? CALLBACK_SETTINGS_INFORMATION
-                        : CALLBACK_SETTINGS_SET_STATS_TEXT;
+                        : CALLBACK_SETTINGS_SET_FORWARD_MESSAGE;
                 InlineKeyboardMarkup keyboard = new KeyboardBuilder()
                         .addButton("🔙 Orqaga", backCallback)
                         .build();
@@ -178,7 +178,7 @@ public class ImageUploadHandler {
             log.error("Error handling document upload", e);
             String backCallback = STATE_AWAITING_INFORMATION_IMAGE.equals(stateManager.getState(chatId))
                     ? CALLBACK_SETTINGS_INFORMATION
-                    : CALLBACK_SETTINGS_SET_STATS_TEXT;
+                    : CALLBACK_SETTINGS_SET_FORWARD_MESSAGE;
             InlineKeyboardMarkup keyboard = new KeyboardBuilder()
                     .addButton("🔙 Orqaga", backCallback)
                     .build();
@@ -214,9 +214,12 @@ public class ImageUploadHandler {
         botUtils.deleteMessage(botSupplier.get(), chatId, messageId);
         cleanupTempMessages(chatId);
 
-        String successMessage = templateKey == MessageKey.INFORMATION_MESSAGE
-                ? "✅ *Information rasmi o'zgartirildi!*\n\nRasm muvaffaqiyatli saqlandi."
-                : "✅ *Statistika rasmi o'zgartirildi!*\n\nRasm muvaffaqiyatli saqlandi.";
+        String successMessage;
+        if (templateKey == MessageKey.INFORMATION_MESSAGE) {
+            successMessage = "✅ *Information rasmi o'zgartirildi!*\n\nRasm muvaffaqiyatli saqlandi.";
+        } else {
+            successMessage = "✅ *Forward xabar rasmi o'zgartirildi!*\n\nRasm muvaffaqiyatli saqlandi.";
+        }
         sendMessage(chatId, successMessage, navigationHandler.createBackButton());
 
         stateManager.clearState(chatId);
@@ -230,10 +233,16 @@ public class ImageUploadHandler {
      */
     private File validateAndProcessImage(File sourceFile, Long chatId) {
         String currentState = stateManager.getState(chatId);
-        String backCallback = (STATE_AWAITING_INFORMATION_MESSAGE.equals(currentState)
-                || STATE_AWAITING_INFORMATION_IMAGE.equals(currentState))
-                        ? CALLBACK_SETTINGS_INFORMATION
-                        : CALLBACK_SETTINGS_SET_STATS_TEXT;
+        String backCallback;
+        if (STATE_AWAITING_INFORMATION_MESSAGE.equals(currentState)
+                || STATE_AWAITING_INFORMATION_IMAGE.equals(currentState)) {
+            backCallback = CALLBACK_SETTINGS_INFORMATION;
+        } else if (STATE_AWAITING_FORWARD_MESSAGE.equals(currentState)
+                || STATE_AWAITING_FORWARD_IMAGE.equals(currentState)) {
+            backCallback = CALLBACK_SETTINGS_SET_FORWARD_MESSAGE;
+        } else {
+            backCallback = CALLBACK_MENU_SETTINGS;
+        }
 
         try {
             long fileSize = sourceFile.length();

@@ -171,7 +171,7 @@ public class AdminNavigationHandler {
                 .newRow()
                 .addButton("📝 Information xabarini o'zgartirish", CALLBACK_SETTINGS_INFORMATION)
                 .newRow()
-                .addButton("📊 Statistika sarlavhasini o'zgartirish", CALLBACK_SETTINGS_SET_STATS_TEXT)
+                .addButton("📤 Forward xabarini o'zgartirish", CALLBACK_SETTINGS_SET_FORWARD_MESSAGE)
                 .newRow()
                 .addButton("🔙 Orqaga", CALLBACK_BACK)
                 .build();

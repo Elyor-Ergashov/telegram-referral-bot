@@ -81,18 +81,6 @@ public final class BotConstants {
      */
     public static final String IMAGES_RELATIVE_DIRECTORY = "bot_images/stats_headers/";
 
-    // ==================== Default Values ====================
-
-    /**
-     * Default required referral count for accessing private channel
-     */
-    public static final int DEFAULT_REQUIRED_REFERRAL_COUNT = 5;
-
-    /**
-     * Default private channel invite link (empty)
-     */
-    public static final String DEFAULT_PRIVATE_CHANNEL_LINK = "";
-
     // ==================== Button Text Constants ====================
 
     /**
@@ -101,9 +89,9 @@ public final class BotConstants {
     public static final String BUTTON_MY_REFERRALS = "📊 Takliflarim";
 
     /**
-     * "Get Private Channel" button text in Uzbek
+     * "Continue" button text in Uzbek
      */
-    public static final String BUTTON_GET_PRIVATE_CHANNEL = "🔐 Maxfiy kanalni olish";
+    public static final String BUTTON_CONTINUE = "▶️ Qatnashishni xohlayman";
 
     /**
      * "Share" button text in Uzbek
@@ -162,17 +150,17 @@ public final class BotConstants {
     public static final String CALLBACK_SETTINGS_SET_REFERRALS = "settings_set_referrals";
     public static final String CALLBACK_SETTINGS_SET_PRIVATE_LINK = "settings_set_private_link";
     public static final String CALLBACK_SETTINGS_INFORMATION = "settings_information";
-    public static final String CALLBACK_SETTINGS_SET_STATS_TEXT = "settings_set_stats_text";
+    public static final String CALLBACK_SETTINGS_SET_FORWARD_MESSAGE = "settings_set_forward_message";
 
     // Admin Bot Callbacks - Information Message
     public static final String CALLBACK_EDIT_INFORMATION_TEXT = "edit_information_text";
     public static final String CALLBACK_EDIT_INFORMATION_IMAGE = "edit_information_image";
     public static final String CALLBACK_DELETE_INFORMATION_IMAGE = "delete_information_image";
 
-    // Admin Bot Callbacks - Stats Header
-    public static final String CALLBACK_EDIT_STATS_TEXT = "edit_stats_text";
-    public static final String CALLBACK_EDIT_STATS_IMAGE = "edit_stats_image";
-    public static final String CALLBACK_DELETE_STATS_IMAGE = "delete_stats_image";
+    // Admin Bot Callbacks - Forward Message
+    public static final String CALLBACK_EDIT_FORWARD_TEXT = "edit_forward_text";
+    public static final String CALLBACK_EDIT_FORWARD_IMAGE = "edit_forward_image";
+    public static final String CALLBACK_DELETE_FORWARD_IMAGE = "delete_forward_image";
 
     // Admin Bot Callbacks - Broadcast
     public static final String CALLBACK_BROADCAST_INFORMATION_ALL = "broadcast_information_all";
@@ -198,8 +186,8 @@ public final class BotConstants {
     public static final String STATE_AWAITING_PRIVATE_LINK = "AWAITING_PRIVATE_LINK";
     public static final String STATE_AWAITING_INFORMATION_MESSAGE = "AWAITING_INFORMATION_MESSAGE";
     public static final String STATE_AWAITING_INFORMATION_IMAGE = "AWAITING_INFORMATION_IMAGE";
-    public static final String STATE_AWAITING_STATS_HEADER = "AWAITING_STATS_HEADER";
-    public static final String STATE_AWAITING_STATS_IMAGE = "AWAITING_STATS_IMAGE";
+    public static final String STATE_AWAITING_FORWARD_MESSAGE = "AWAITING_FORWARD_MESSAGE";
+    public static final String STATE_AWAITING_FORWARD_IMAGE = "AWAITING_FORWARD_IMAGE";
     public static final String STATE_AWAITING_BROADCAST_MESSAGE = "AWAITING_BROADCAST_MESSAGE";
 
     // Challenge Creation States

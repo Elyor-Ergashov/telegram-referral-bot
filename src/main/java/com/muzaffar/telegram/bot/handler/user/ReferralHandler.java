@@ -18,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import java.util.List;
@@ -117,30 +118,38 @@ public class ReferralHandler {
                     chatId, validReferrals, challengeUser.getIsCompleted(),
                     challengeUser.getHasReceivedReward(), challenge.getRequiredReferralCount());
 
-            // Send optional stats header image first
-            final Long finalChallengeId = challenge.getId();
-            messageTemplateService.getImagePath(finalChallengeId, MessageKey.STATS_HEADER).ifPresent(imagePath -> {
-                try {
-                    botUtils.sendPhotoFromFile(botSupplier.get(), chatId, imagePath);
-                } catch (Exception e) {
-                    log.error("Error sending stats header image", e);
-                }
-            });
-
-            // Calculate indirect referrals
+            // Calculate indirect referrals (still needed for reward check)
             long indirectReferrals = challengeUserService.getIndirectReferralCount(challenge.getId(), chatId);
 
-            SendMessage statsMessage = messageService.createStatsMessageWithButton(
-                    challenge.getId(),
-                    chatId,
-                    botUsernameSupplier.get(),
-                    challengeUser.getReferralCode(),
-                    (int) validReferrals,
-                    (int) indirectReferrals,
-                    (int) validReferrals,
-                    0,
-                    challenge.getRequiredReferralCount());
-            botSupplier.get().execute(statsMessage);
+            // Send FORWARD_MESSAGE with referral link and share button (with optional
+            // image)
+            String forwardText = messageTemplateService.getText(challenge.getId(), MessageKey.FORWARD_MESSAGE);
+            var forwardImagePath = messageTemplateService.getImagePath(challenge.getId(), MessageKey.FORWARD_MESSAGE);
+
+            if (forwardText != null && !forwardText.trim().isEmpty()) {
+                String referralLink = String.format("https://t.me/%s?start=%s",
+                        botUsernameSupplier.get(), challengeUser.getReferralCode());
+
+                // Create message with hyperlink
+                String fullForwardText = forwardText + "\n\n[Sizga ham qatnashishni tavsiya qilaman 👇](" + referralLink
+                        + ")";
+
+                // Send with image if exists, otherwise just text
+                if (forwardImagePath.isPresent()) {
+                    botUtils.sendPhotoWithCaption(botSupplier.get(), chatId,
+                            forwardImagePath.get(), fullForwardText);
+                } else {
+                    SendMessage forwardMessage = new SendMessage();
+                    forwardMessage.setChatId(chatId.toString());
+                    forwardMessage.setText(fullForwardText);
+                    forwardMessage.setParseMode("Markdown");
+                    botSupplier.get().execute(forwardMessage);
+                }
+
+                // Send follow-up explanation message
+                botUtils.sendMessage(botSupplier.get(), chatId,
+                        "👆 Yuqoridagi sizning referal link/havolangiz. Uni ko'proq tanishlaringizga ulashing va ko'proq ball yig'ing! Omad!");
+            }
 
             Thread.sleep(500);
 

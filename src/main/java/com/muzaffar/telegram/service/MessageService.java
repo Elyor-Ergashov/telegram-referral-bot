@@ -65,8 +65,8 @@ public class MessageService {
         message.setText(text);
         message.setParseMode("Markdown");
 
-        // Create keyboard with "Takliflarim" button using KeyboardBuilder
-        InlineKeyboardMarkup keyboard = KeyboardBuilder.singleButton(BUTTON_MY_REFERRALS, CALLBACK_MY_REFERRALS);
+        // Create keyboard with "Davom etish" button using KeyboardBuilder
+        InlineKeyboardMarkup keyboard = KeyboardBuilder.singleButton(BUTTON_CONTINUE, CALLBACK_MY_REFERRALS);
         message.setReplyMarkup(keyboard);
 
         return message;
@@ -88,13 +88,6 @@ public class MessageService {
 
         StringBuilder text = new StringBuilder();
 
-        // Add optional header text from database for this challenge
-        String headerText = messageTemplateService.getText(challengeId, MessageKey.STATS_HEADER);
-        if (headerText != null && !headerText.isEmpty()) {
-            text.append(headerText).append("\n\n");
-        }
-
-        text.append("📊 *Sizning statistikangiz*\n\n");
         text.append(String.format("👥 *Jami takliflaringiz:* %d (To'g'ridan-to'g'ri: %d, Bilvosita: %d)\n\n",
                 totalInvites, totalReferralCount, indirectReferralCount));
         text.append(String.format("✅ *Aktiv referallar:* %d\n", activeCount));
@@ -107,31 +100,16 @@ public class MessageService {
         text.append(String.format("🎯 *Mukofot uchun kerak:* %d\n\n", requiredCount));
 
         if (remaining > 0) {
-            text.append(String.format("⏳ *Yana kerak:* %d ta aktiv referal\n\n", remaining));
+            text.append(String.format("⏳ *Yana kerak:* %d ta aktiv referal", remaining));
         } else {
-            text.append("🎉 *Tabriklaymiz!* Siz kerakli referallarga erishdingiz!\n\n");
+            text.append("🎉 *Tabriklaymiz!* Siz kerakli referallarga erishdingiz!");
         }
-
-        text.append("🔗 *Sizning referal havolangiz:*\n");
-        text.append(String.format("`%s`\n\n", referralLink));
-        text.append("💡 Ko'proq do'stlarni taklif qilish uchun havolangizni ulashing!");
 
         message.setText(text.toString());
         message.setParseMode("Markdown");
 
-        // Build share message with STATS_HEADER at the top
+        // Build share message
         StringBuilder shareMessageBuilder = new StringBuilder();
-
-        // Add STATS_HEADER to share message (remove markdown formatting)
-        if (headerText != null && !headerText.isEmpty()) {
-            String plainHeader = headerText.replace("*", "").replace("_", "").replace("`", "").trim();
-            // Limit to 1000 chars to keep URL manageable
-            if (plainHeader.length() > 1000) {
-                plainHeader = plainHeader.substring(0, 1000) + "...";
-            }
-            shareMessageBuilder.append("\n").append(plainHeader).append("\n\n");
-        }
-
         shareMessageBuilder.append("Yopiq kanalga bepul kirish uchun shu botga kiring 👉\n");
         shareMessageBuilder.append(referralLink);
 
@@ -402,8 +380,8 @@ public class MessageService {
             }
             var imagePathOptional = messageTemplateService.getImagePath(challengeId, MessageKey.INFORMATION_MESSAGE);
 
-            // Create keyboard with "Takliflarim" button
-            InlineKeyboardMarkup keyboard = KeyboardBuilder.singleButton(BUTTON_MY_REFERRALS, CALLBACK_MY_REFERRALS);
+            // Create keyboard with "Davom etish" button
+            InlineKeyboardMarkup keyboard = KeyboardBuilder.singleButton(BUTTON_CONTINUE, CALLBACK_MY_REFERRALS);
 
             // Check if there's an image
             if (imagePathOptional.isPresent()) {

@@ -261,7 +261,10 @@ public class StartCommandHandler implements BotHandler {
             String referralCode, ChallengeUser challengeUser) {
         ChallengeUser referrer = challengeUserService.getUserByReferralCode(referralCode).orElse(null);
 
-        if (referrer != null && referrer.getChallenge().getId().equals(challenge.getId())) {
+        // Check if referrer exists, is in the same challenge, and is not the same user
+        // (prevent self-referral)
+        if (referrer != null && referrer.getChallenge().getId().equals(challenge.getId())
+                && !referrer.getUserChatId().equals(chatId)) {
             boolean referralAdded = challengeUserService.addReferral(challenge.getId(), referrer.getUserChatId(),
                     chatId);
 

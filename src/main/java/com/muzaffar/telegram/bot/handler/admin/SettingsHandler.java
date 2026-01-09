@@ -319,136 +319,152 @@ public class SettingsHandler {
         stateManager.clearMenuMessageId(chatId);
     }
 
-    // ==================== Stats Header ====================
+    // ==================== FORWARD_MESSAGE Settings ====================
 
-    public void startSetStatsHeader(Long chatId, Integer messageId) {
-        botUtils.deleteMessage(botSupplier.get(), chatId, messageId);
-
+    /**
+     * Start editing forward message - show submenu
+     */
+    public void startSetForwardMessage(Long chatId, Integer messageId) {
         Long challengeId = getCurrentChallengeId(chatId);
-        messageTemplateService.getImagePath(challengeId, MessageKey.STATS_HEADER).ifPresent(imagePath -> {
-            try {
-                String fullPath = botUtils.getFullImagePath(imagePath);
-                SendPhoto sendPhoto = new SendPhoto();
-                sendPhoto.setChatId(chatId.toString());
-                sendPhoto.setPhoto(new InputFile(new File(fullPath)));
-                sendPhoto.setCaption("🖼 *Hozirgi rasm:*");
-                Message sentPhoto = botSupplier.get().execute(sendPhoto);
-                stateManager.trackTempMessage(chatId, sentPhoto.getMessageId());
-            } catch (Exception e) {
-                log.error("Error sending current stats header image", e);
-            }
-        });
 
-        String currentText = messageTemplateService.getText(challengeId, MessageKey.STATS_HEADER);
-        boolean hasImage = messageTemplateService.getImagePath(challengeId, MessageKey.STATS_HEADER).isPresent();
+        String currentText = messageTemplateService.getText(challengeId, MessageKey.FORWARD_MESSAGE);
+        boolean hasImage = messageTemplateService.getImagePath(challengeId, MessageKey.FORWARD_MESSAGE).isPresent();
 
-        SendMessage message = new SendMessage();
-        message.setChatId(chatId.toString());
-        message.setText(
-                String.format(
-                        "📊 *Statistika sarlavhasini o'zgartirish*\n\n" +
-                                "📝 *Hozirgi matn:*\n```\n%s\n```\n\n" +
-                                "🖼 *Rasm:* %s\n\n" +
-                                "Kerakli amalni tanlang:",
-                        currentText,
-                        hasImage ? "✅ O'rnatilgan" : "❌ O'rnatilmagan"));
-        message.setParseMode("Markdown");
+        StringBuilder message = new StringBuilder();
+        message.append("📤 *Forward xabar sozlamalari*\n\n");
+        message.append(
+                "Bu xabar statistikadan keyin yuboriladi va Do'stlarimga ulashish buttoni bilan birga keladi.\n\n");
+        message.append("*Hozirgi matn:*\n");
+        if (currentText != null && !currentText.isEmpty()) {
+            message.append(currentText).append("\n\n");
+        } else {
+            message.append("_(Bo'sh)_\n\n");
+        }
+        message.append("*Rasm:* ").append(hasImage ? "✅ Mavjud" : "❌ Mavjud emas");
 
-        KeyboardBuilder builder = new KeyboardBuilder()
-                .addRow("🔹 Matnni o'zgartirish", CALLBACK_EDIT_STATS_TEXT)
-                .addRow(hasImage ? "🔹 Rasmni o'zgartirish" : "🔹 Rasm qo'shish", CALLBACK_EDIT_STATS_IMAGE);
+        KeyboardBuilder keyboardBuilder = new KeyboardBuilder()
+                .addButton("✏️ Matnni o'zgartirish", CALLBACK_EDIT_FORWARD_TEXT)
+                .newRow()
+                .addButton("🖼 Rasmni o'zgartirish", CALLBACK_EDIT_FORWARD_IMAGE);
 
         if (hasImage) {
-            builder.addButton("🔹 Rasmni o'chirish", CALLBACK_DELETE_STATS_IMAGE);
+            keyboardBuilder.newRow()
+                    .addButton("🗑 Rasmni o'chirish", CALLBACK_DELETE_FORWARD_IMAGE);
         }
 
-        InlineKeyboardMarkup keyboard = builder
-                .addRow("🔙 Orqaga", CALLBACK_MENU_SETTINGS)
-                .build();
-        message.setReplyMarkup(keyboard);
+        keyboardBuilder.newRow()
+                .addButton("🔙 Orqaga", CALLBACK_BACK);
 
-        try {
-            botSupplier.get().execute(message);
-        } catch (TelegramApiException e) {
-            log.error("Error showing stats header menu", e);
+        // Delete old message and send image first if exists, then menu message
+        if (hasImage) {
+            botUtils.deleteMessage(botSupplier.get(), chatId, messageId);
+
+            // Send image first
+            messageTemplateService.getImagePath(challengeId, MessageKey.FORWARD_MESSAGE).ifPresent(imagePath -> {
+                try {
+                    botUtils.sendPhotoFromFile(botSupplier.get(), chatId, imagePath);
+                } catch (Exception e) {
+                    log.error("Error sending forward message image preview", e);
+                }
+            });
+
+            // Then send menu message
+            sendMessage(chatId, message.toString(), keyboardBuilder.build());
+        } else {
+            // No image, just edit the existing message
+            editMessage(chatId, messageId, message.toString(), keyboardBuilder.build());
         }
     }
 
-    public void startEditStatsText(Long chatId, Integer messageId) {
-        stateManager.setState(chatId, STATE_AWAITING_STATS_HEADER);
+    /**
+     * Start editing forward message text
+     */
+    public void startEditForwardText(Long chatId, Integer messageId) {
+        Long challengeId = getCurrentChallengeId(chatId);
+
+        stateManager.setState(chatId, STATE_AWAITING_FORWARD_MESSAGE);
         stateManager.setMenuMessageId(chatId, messageId);
 
-        Long challengeId = getCurrentChallengeId(chatId);
-        String currentText = messageTemplateService.getText(challengeId, MessageKey.STATS_HEADER);
-        if (currentText == null || currentText.isEmpty()) {
-            currentText = "O'rnatilmagan";
-        }
+        String currentText = messageTemplateService.getText(challengeId, MessageKey.FORWARD_MESSAGE);
 
-        editMessage(chatId, messageId,
-                String.format(
-                        "📊 *Statistika matnini o'zgartirish*\n\n" +
-                                "📝 *Hozirgi matn:*\n```\n%s\n```\n\n" +
-                                "Yangi matnni yuboring:\n\n" +
-                                "*Eslatma:* Markdown formatidan foydalanishingiz mumkin (*bold*, _italic_, `code`)",
-                        currentText),
-                new KeyboardBuilder()
-                        .addButton("🔙 Orqaga", CALLBACK_SETTINGS_SET_STATS_TEXT)
-                        .build());
+        StringBuilder message = new StringBuilder();
+        message.append("📤 *Forward xabar matnini o'zgartirish*\n\n");
+        message.append("*Hozirgi matn:*\n");
+        if (currentText != null && !currentText.isEmpty()) {
+            message.append(currentText).append("\n\n");
+        } else {
+            message.append("_(Bo'sh)_\n\n");
+        }
+        message.append("Yangi matnni kiriting:");
+
+        InlineKeyboardMarkup keyboard = new KeyboardBuilder()
+                .addButton("🔙 Orqaga", CALLBACK_SETTINGS_SET_FORWARD_MESSAGE)
+                .build();
+
+        editMessage(chatId, messageId, message.toString(), keyboard);
     }
 
-    public void startEditStatsImage(Long chatId, Integer messageId) {
-        stateManager.setState(chatId, STATE_AWAITING_STATS_IMAGE);
-
+    /**
+     * Start editing forward message image
+     */
+    public void startEditForwardImage(Long chatId, Integer messageId) {
         Long challengeId = getCurrentChallengeId(chatId);
-        messageTemplateService.getImagePath(challengeId, MessageKey.STATS_HEADER).ifPresent(imagePath -> {
+
+        // Send current image if exists
+        messageTemplateService.getImagePath(challengeId, MessageKey.FORWARD_MESSAGE).ifPresent(imagePath -> {
             try {
-                Message sentPhoto = botUtils.sendPhotoWithCaption(botSupplier.get(), chatId, imagePath,
-                        "🖼 *Hozirgi rasm:*");
-                if (sentPhoto != null) {
-                    stateManager.trackTempMessage(chatId, sentPhoto.getMessageId());
-                }
+                botUtils.sendPhotoFromFile(botSupplier.get(), chatId, imagePath);
             } catch (Exception e) {
-                log.error("Error sending current stats header image", e);
+                log.error("Error sending forward image preview", e);
             }
         });
 
-        Message message = sendMessage(chatId,
-                "🖼 *Statistika rasmini o'zgartirish*\n\n" +
-                        "Yangi rasmni yuboring (foto yoki fayl ko'rinishida):\n\n" +
-                        "*Eslatma:* Sifatli rasm uchun faylni siqilmagan holda yuboring (Document).",
-                new KeyboardBuilder()
-                        .addButton("🔙 Orqaga", CALLBACK_SETTINGS_SET_STATS_TEXT)
-                        .build());
-        if (message != null) {
-            stateManager.trackTempMessage(chatId, message.getMessageId());
-        }
-    }
+        stateManager.setState(chatId, STATE_AWAITING_FORWARD_IMAGE);
+        stateManager.setMenuMessageId(chatId, messageId);
 
-    public void confirmDeleteStatsImage(Long chatId, Integer messageId) {
-        Long challengeId = getCurrentChallengeId(chatId);
-        messageTemplateService.getImagePath(challengeId, MessageKey.STATS_HEADER).ifPresent(oldPath -> {
-            try {
-                String fullOldPath = botUtils.getFullImagePath(oldPath);
-                Files.deleteIfExists(Paths.get(fullOldPath));
-                log.info("Deleted stats header image: {}", fullOldPath);
-            } catch (IOException e) {
-                log.error("Failed to delete old image file", e);
-            }
-        });
-
-        messageTemplateService.updateImagePath(challengeId, MessageKey.STATS_HEADER, "");
+        InlineKeyboardMarkup keyboard = new KeyboardBuilder()
+                .addButton("🔙 Orqaga", CALLBACK_SETTINGS_SET_FORWARD_MESSAGE)
+                .build();
 
         editMessage(chatId, messageId,
-                "✅ *Statistika rasmi o'chirildi!*\n\nRasm endi ko'rsatilmaydi.",
+                "🖼 *Forward xabar rasmini o'zgartirish*\n\nYangi rasmni yuboring:",
+                keyboard);
+    }
+
+    /**
+     * Confirm delete forward message image
+     */
+    public void confirmDeleteForwardImage(Long chatId, Integer messageId) {
+        Long challengeId = getCurrentChallengeId(chatId);
+
+        // Delete the image file
+        messageTemplateService.getImagePath(challengeId, MessageKey.FORWARD_MESSAGE).ifPresent(oldPath -> {
+            try {
+                String fullPath = botUtils.getFullImagePath(oldPath);
+                Files.deleteIfExists(Paths.get(fullPath));
+                log.info("Deleted forward image: {}", fullPath);
+            } catch (Exception e) {
+                log.error("Error deleting forward image: {}", oldPath, e);
+            }
+        });
+
+        // Clear image path in database
+        messageTemplateService.updateImagePath(challengeId, MessageKey.FORWARD_MESSAGE, "");
+
+        editMessage(chatId, messageId,
+                "✅ *Forward xabar rasmi o'chirildi!*\n\nRasm endi ko'rsatilmaydi.",
                 navigationHandler.createBackButton());
     }
 
-    public void handleStatsHeaderInput(Long chatId, String text, Integer messageId) {
+    /**
+     * Handle forward message text input
+     */
+    public void handleForwardMessageInput(Long chatId, String text, Integer messageId) {
         String trimmedText = text.trim();
 
         if (trimmedText.isEmpty()) {
             InlineKeyboardMarkup keyboard = new KeyboardBuilder()
-                    .addButton("🔙 Orqaga", CALLBACK_SETTINGS_SET_STATS_TEXT)
+                    .addButton("🔙 Orqaga", CALLBACK_SETTINGS_SET_FORWARD_MESSAGE)
                     .build();
             sendMessage(chatId, "❌ *Noto'g'ri format:*\n\nMatn bo'sh bo'lishi mumkin emas.\n\nQaytadan kiriting:",
                     keyboard);
@@ -457,8 +473,8 @@ public class SettingsHandler {
 
         botUtils.deleteMessage(botSupplier.get(), chatId, messageId);
         Long challengeId = getCurrentChallengeId(chatId);
-        messageTemplateService.updateText(challengeId, MessageKey.STATS_HEADER, trimmedText);
-        sendMessage(chatId, "✅ *Statistika sarlavhasi o'zgartirildi!*", navigationHandler.createBackButton());
+        messageTemplateService.updateText(challengeId, MessageKey.FORWARD_MESSAGE, trimmedText);
+        sendMessage(chatId, "✅ *Forward xabar matni o'zgartirildi!*", navigationHandler.createBackButton());
 
         stateManager.clearState(chatId);
         stateManager.clearMenuMessageId(chatId);
