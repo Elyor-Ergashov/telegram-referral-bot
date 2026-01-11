@@ -328,33 +328,56 @@ public class StartCommandHandler implements BotHandler {
 
     /**
      * Determine which challenge to use based on context
+     * 
+     * Priority:
+     * 1. Referral code challenge (if provided)
+     * 2. Main challenge (if current challenge is no longer main and new main
+     * exists)
+     * 3. Current challenge context (if still valid)
+     * 4. Default main challenge
      */
     private Challenge determineChallenge(Long chatId, String referralCode) {
-        // First check if user has a challenge context
-        Optional<Long> challengeIdOpt = sessionService.getChallengeContext(chatId);
-        if (challengeIdOpt.isPresent()) {
-            Challenge challenge = challengeService.getChallengeById(challengeIdOpt.get()).orElse(null);
-            if (challenge != null) {
-                log.info("User {} joining challenge {} from context", chatId, challenge.getName());
-                return challenge;
-            }
-        }
+        Challenge mainChallenge = challengeService.getDefaultChallenge().orElse(null);
 
-        // Check for referral code
+        // 1. PRIORITY: Agar referral code bo'lsa - referrer's challenge ishlatish
         if (referralCode != null && !referralCode.isEmpty()) {
             ChallengeUser referrer = challengeUserService.getUserByReferralCode(referralCode).orElse(null);
             if (referrer != null) {
-                Long challengeId = referrer.getChallenge().getId();
-                Challenge challenge = challengeService.getChallengeById(challengeId).orElse(null);
-                if (challenge != null) {
-                    log.info("User {} joining challenge {} via referral code {}", chatId, challenge.getName(),
-                            referralCode);
-                    return challenge;
-                }
+                Challenge referrerChallenge = referrer.getChallenge();
+                log.info("User {} joining challenge {} via referral code {}",
+                        chatId, referrerChallenge.getName(), referralCode);
+                return referrerChallenge;
             }
         }
 
-        // Final fallback to default challenge
-        return challengeService.getDefaultChallenge().orElse(null);
+        // 2. User'ning current challenge context'ini tekshirish
+        Optional<Long> currentChallengeIdOpt = sessionService.getChallengeContext(chatId);
+
+        if (currentChallengeIdOpt.isPresent()) {
+            Challenge currentChallenge = challengeService.getChallengeById(currentChallengeIdOpt.get()).orElse(null);
+
+            // 3. Agar current challenge mavjud va main challenge ham mavjud bo'lsa
+            if (currentChallenge != null && mainChallenge != null) {
+                // Agar main challenge o'zgargan bo'lsa (current challenge endi main emas)
+                if (!currentChallenge.getIsMain() && mainChallenge.getIsMain()
+                        && !currentChallenge.getId().equals(mainChallenge.getId())) {
+                    log.info("User {} switching from challenge '{}' to new main challenge '{}'",
+                            chatId, currentChallenge.getName(), mainChallenge.getName());
+                    return mainChallenge; // Yangi main challenge ga o'tkazish
+                }
+                // Current challenge hali ham valid (yoki hali ham main)
+                log.info("User {} continuing with challenge '{}'", chatId, currentChallenge.getName());
+                return currentChallenge;
+            } else if (currentChallenge != null) {
+                // Main challenge yo'q lekin current challenge mavjud
+                return currentChallenge;
+            }
+        }
+
+        // 4. DEFAULT: main challenge
+        if (mainChallenge != null) {
+            log.info("User {} joining default main challenge '{}'", chatId, mainChallenge.getName());
+        }
+        return mainChallenge;
     }
 }

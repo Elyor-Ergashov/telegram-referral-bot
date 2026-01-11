@@ -1,5 +1,6 @@
 package com.muzaffar.telegram.service;
 
+import com.muzaffar.telegram.entity.Challenge;
 import com.muzaffar.telegram.entity.UserSessionState;
 import com.muzaffar.telegram.repository.UserSessionStateRepository;
 import lombok.RequiredArgsConstructor;
@@ -14,9 +15,10 @@ import java.util.Optional;
 @Service
 @RequiredArgsConstructor
 public class UserSessionService {
-    
+
     private final UserSessionStateRepository sessionRepository;
-    
+    private final ChallengeService challengeService;
+
     /**
      * Get or create session state for a chat
      */
@@ -24,14 +26,21 @@ public class UserSessionService {
     public UserSessionState getOrCreateSession(Long chatId) {
         return sessionRepository.findByChatId(chatId)
                 .orElseGet(() -> {
+                    // Get default challenge for new sessions
+                    Challenge defaultChallenge = challengeService.getDefaultChallenge().orElse(null);
+
                     UserSessionState session = UserSessionState.builder()
                             .chatId(chatId)
                             .hasSeenIntro(false)
+                            .currentChallengeId(defaultChallenge != null ? defaultChallenge.getId() : null)
                             .build();
+
+                    log.debug("Created new session for chatId {} with challenge context: {}",
+                            chatId, defaultChallenge != null ? defaultChallenge.getName() : "none");
                     return sessionRepository.save(session);
                 });
     }
-    
+
     /**
      * Set pending referral code for user
      */
@@ -42,7 +51,7 @@ public class UserSessionService {
         sessionRepository.save(session);
         log.debug("Set pending referral code {} for chatId {}", code, chatId);
     }
-    
+
     /**
      * Get pending referral code for user
      */
@@ -52,7 +61,7 @@ public class UserSessionService {
                 .map(UserSessionState::getPendingReferralCode)
                 .filter(code -> code != null && !code.isEmpty());
     }
-    
+
     /**
      * Clear pending referral code for user
      */
@@ -64,7 +73,7 @@ public class UserSessionService {
             log.debug("Cleared pending referral for chatId {}", chatId);
         });
     }
-    
+
     /**
      * Set whether user has seen intro
      */
@@ -75,7 +84,7 @@ public class UserSessionService {
         sessionRepository.save(session);
         log.debug("Set hasSeenIntro={} for chatId {}", hasSeen, chatId);
     }
-    
+
     /**
      * Check if user has seen intro
      */
@@ -85,7 +94,7 @@ public class UserSessionService {
                 .map(UserSessionState::getHasSeenIntro)
                 .orElse(false);
     }
-    
+
     /**
      * Set challenge context for user
      */
@@ -96,7 +105,7 @@ public class UserSessionService {
         sessionRepository.save(session);
         log.debug("Set challenge context {} for chatId {}", challengeId, chatId);
     }
-    
+
     /**
      * Get challenge context for user
      */
@@ -105,7 +114,7 @@ public class UserSessionService {
         return sessionRepository.findByChatId(chatId)
                 .map(UserSessionState::getCurrentChallengeId);
     }
-    
+
     /**
      * Clean up expired sessions
      */

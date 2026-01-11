@@ -77,6 +77,11 @@ public class ReferralHandler {
             return;
         }
 
+        if (challengeIdOpt.isEmpty() || !challengeIdOpt.get().equals(challenge.getId())) {
+            sessionService.setChallengeContext(chatId, challenge.getId());
+            log.debug("Set challenge context for user {} to challenge {}", chatId, challenge.getName());
+        }
+
         // Get or create challenge user
         ChallengeUser challengeUser = challengeUserService.getUserInChallenge(challenge.getId(), chatId).orElse(null);
 

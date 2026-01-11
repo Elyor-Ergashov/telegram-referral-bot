@@ -12,26 +12,27 @@ import java.util.Optional;
 
 @Repository
 public interface ChallengeUserRepository extends JpaRepository<ChallengeUser, Long> {
-    
+
     Optional<ChallengeUser> findByChallengeAndUserChatId(Challenge challenge, Long userChatId);
-    
-    Optional<ChallengeUser> findByReferralCode(String referralCode);
-    
+
+    @Query("SELECT cu FROM ChallengeUser cu JOIN FETCH cu.challenge WHERE cu.referralCode = :referralCode")
+    Optional<ChallengeUser> findByReferralCode(@Param("referralCode") String referralCode);
+
     List<ChallengeUser> findByChallenge(Challenge challenge);
-    
+
     @Query("SELECT cu FROM ChallengeUser cu WHERE cu.challenge = :challenge AND cu.hasVerifiedChannels = true")
     List<ChallengeUser> findVerifiedUsersByChallenge(@Param("challenge") Challenge challenge);
-    
+
     @Query("SELECT cu FROM ChallengeUser cu WHERE cu.challenge = :challenge AND cu.isCompleted = true")
     List<ChallengeUser> findCompletedUsersByChallenge(@Param("challenge") Challenge challenge);
-    
+
     @Query("SELECT COUNT(cu) FROM ChallengeUser cu WHERE cu.challenge = :challenge")
     long countUsersByChallenge(@Param("challenge") Challenge challenge);
-    
+
     @Query("SELECT COUNT(cu) FROM ChallengeUser cu WHERE cu.challenge = :challenge AND cu.isCompleted = true")
     long countCompletedUsersByChallenge(@Param("challenge") Challenge challenge);
-    
+
     boolean existsByChallengeAndUserChatId(Challenge challenge, Long userChatId);
-    
+
     List<ChallengeUser> findByUserChatId(Long userChatId);
 }
