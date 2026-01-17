@@ -313,11 +313,8 @@ public class StartCommandHandler implements BotHandler {
                     .verifyReferredUsersWithCounts(challenge, referrer.getUserChatId());
 
             if (verification.activeReferrals >= challenge.getRequiredReferralCount()) {
-                Thread.sleep(500);
-
-                // This will be handled by ReferralHandler - just log for now
-                log.info("Referrer {} qualifies for reward with {} active referrals",
-                        referrer.getUserChatId(), verification.activeReferrals);
+                // Delegate to ReferralHandler for centralized reward sending
+                referralHandler.checkAndSendReward(challenge, referrer.getUserChatId());
             } else {
                 log.warn("Referrer {} has only {} active referrals (required: {}, left channel: {})",
                         referrer.getUserChatId(), verification.activeReferrals,

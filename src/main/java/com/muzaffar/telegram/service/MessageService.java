@@ -205,6 +205,37 @@ public class MessageService {
     }
 
     /**
+     * Create challenge completion message (for users who already received their
+     * reward)
+     */
+    /**
+     * Create challenge completion message (for users who already received their
+     * reward)
+     * Shows the full congratulations message with stats and the invite link
+     */
+    public SendMessage createChallengeCompletionMessage(Long chatId, int requiredCount, String inviteLink) {
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId.toString());
+
+        // Escape underscores in the invite link to prevent Markdown parsing issues
+        String escapedLink = inviteLink.replace("_", "\\_");
+
+        StringBuilder text = new StringBuilder();
+        text.append("🎉 *Tabriklaymiz!*\n\n");
+        text.append(String.format(
+                "Siz muvaffaqiyatli %d ta do'stingizni taklif qildingiz va bizning maxsus shaxsiy kanalimizga kirish huquqiga ega bo'ldingiz!\n\n",
+                requiredCount));
+        text.append("🔓 *Qo'shilish uchun quyidagi havolani bosing:*\n");
+        text.append(escapedLink + "\n\n");
+        text.append("🌟 Hamjamiyatimizni o'stirishda yordam berish uchun do'stlaringizni taklif qilishda davom eting!");
+
+        message.setText(text.toString());
+        message.setParseMode("Markdown");
+
+        return message;
+    }
+
+    /**
      * Create referral info message with share button (sent after main information)
      */
     public SendMessage createReferralInfoMessage(Long chatId, String botUsername, String referralCode) {

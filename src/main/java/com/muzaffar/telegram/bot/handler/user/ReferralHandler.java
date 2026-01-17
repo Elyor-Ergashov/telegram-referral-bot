@@ -171,48 +171,99 @@ public class ReferralHandler {
     }
 
     /**
-     * Check and send reward if user qualifies
+     * Check and send reward if user qualifies (Centralized logic)
+     */
+    public void checkAndSendReward(Challenge challenge, Long chatId) {
+        ChallengeUser challengeUser = challengeUserService.getUserInChallenge(challenge.getId(), chatId).orElse(null);
+        if (challengeUser == null) {
+            log.warn("User {} not found in challenge {} during reward check", chatId, challenge.getName());
+            return;
+        }
+
+        if (!challengeUser.getHasReceivedReward()) {
+            // Check if user is eligible for reward (completed or enough referrals)
+            long validReferrals = challengeUserService.getValidReferralCount(challenge.getId(), chatId);
+
+            if (challengeUser.getIsCompleted() || validReferrals >= challenge.getRequiredReferralCount()) {
+                ReferralVerificationResult verification = verifyReferredUsersWithCounts(challenge, chatId);
+
+                if (verification.activeReferrals >= challenge.getRequiredReferralCount()) {
+                    String inviteLink = inviteLinkService.createOneTimeInviteLink(
+                            botSupplier.get(), challenge.getId(), chatId);
+
+                    if (inviteLink != null) {
+                        SendMessage completionMessage = messageService.createChallengeCompletionMessage(
+                                chatId,
+                                challenge.getRequiredReferralCount(),
+                                inviteLink);
+
+                        try {
+                            botSupplier.get().execute(completionMessage);
+                            challengeUserService.markRewardSent(challenge.getId(), chatId);
+                            log.info(
+                                    "User {} received one-time private channel link for challenge {} with {} active referrals",
+                                    chatId, challenge.getId(), verification.activeReferrals);
+                        } catch (TelegramApiException e) {
+                            log.error("Error sending reward message to user {}", chatId, e);
+                        }
+                    } else {
+                        log.error("Failed to generate invite link for user {}", chatId);
+                        botUtils.sendMessage(botSupplier.get(), chatId,
+                                "❌ Xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.");
+                    }
+                } else {
+                    log.warn("User {} has {} total referrals but only {} active (required: {}, left: {})",
+                            chatId, verification.totalReferrals, verification.activeReferrals,
+                            challenge.getRequiredReferralCount(), verification.leftChannels);
+
+                    try {
+                        long indirectReferrals = challengeUserService.getIndirectReferralCount(challenge.getId(),
+                                chatId);
+                        SendMessage insufficientMessage = messageService.createInsufficientActiveReferralsMessage(
+                                chatId,
+                                verification.totalReferrals,
+                                (int) indirectReferrals,
+                                verification.activeReferrals,
+                                verification.leftChannels,
+                                challenge.getRequiredReferralCount());
+                        botSupplier.get().execute(insufficientMessage);
+                    } catch (TelegramApiException e) {
+                        log.error("Error sending insufficient referrals message", e);
+                    }
+                }
+            }
+        } else {
+            // User already received reward - show the full challenge completion message (if
+            // called from button context)
+            // Note: This part handles the "Takliflarim" button case mostly.
+            // For automatic checks, logging "already received" is sufficient, but here we
+            // reuse logic.
+            // However, this calls getUnusedLink which is for display.
+
+            Optional<String> unusedLink = inviteLinkService.getUnusedLink(challenge.getId(), chatId);
+
+            if (unusedLink.isPresent()) {
+                SendMessage completionMessage = messageService.createChallengeCompletionMessage(
+                        chatId,
+                        challenge.getRequiredReferralCount(),
+                        unusedLink.get());
+                try {
+                    botSupplier.get().execute(completionMessage);
+                } catch (TelegramApiException e) {
+                    log.error("Error sending completion message", e);
+                }
+            } else {
+                botUtils.sendMessage(botSupplier.get(), chatId, "✅ Siz allaqachon shaxsiy kanal havolasini olgansiz!");
+            }
+        }
+    }
+
+    /**
+     * Check and send reward if user qualifies (Legacy wrapper or internal helper)
      */
     private void handleRewardCheck(Challenge challenge, Long chatId, ChallengeUser challengeUser,
             long validReferrals, long indirectReferrals) throws TelegramApiException, InterruptedException {
-        if (!challengeUser.getHasReceivedReward()) {
-            ReferralVerificationResult verification = verifyReferredUsersWithCounts(challenge, chatId);
-
-            if (verification.activeReferrals >= challenge.getRequiredReferralCount()) {
-                String inviteLink = inviteLinkService.createOneTimeInviteLink(
-                        botSupplier.get(), challenge.getId(), chatId);
-
-                if (inviteLink != null) {
-                    String linkMessage = messageService.createPrivateChannelMessage(
-                            inviteLink,
-                            challenge.getRequiredReferralCount());
-                    botUtils.sendMessage(botSupplier.get(), chatId, linkMessage);
-                    challengeUserService.markRewardSent(challenge.getId(), chatId);
-                    log.info(
-                            "User {} received one-time private channel link for challenge {} with {} active referrals (left: {})",
-                            chatId, challenge.getId(), verification.activeReferrals, verification.leftChannels);
-                } else {
-                    log.error("Failed to generate invite link for user {}", chatId);
-                    botUtils.sendMessage(botSupplier.get(), chatId,
-                            "❌ Xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.");
-                }
-            } else {
-                log.warn("User {} has {} total referrals but only {} active (required: {}, left: {})",
-                        chatId, verification.totalReferrals, verification.activeReferrals,
-                        challenge.getRequiredReferralCount(), verification.leftChannels);
-
-                SendMessage insufficientMessage = messageService.createInsufficientActiveReferralsMessage(
-                        chatId,
-                        verification.totalReferrals,
-                        (int) indirectReferrals,
-                        verification.activeReferrals,
-                        verification.leftChannels,
-                        challenge.getRequiredReferralCount());
-                botSupplier.get().execute(insufficientMessage);
-            }
-        } else {
-            botUtils.sendMessage(botSupplier.get(), chatId, "✅ Siz allaqachon shaxsiy kanal havolasini olgansiz!");
-        }
+        checkAndSendReward(challenge, chatId);
     }
 
     /**
@@ -334,56 +385,11 @@ public class ReferralHandler {
             if ((updatedReferrer.getIsCompleted() || validReferrals >= challenge.getRequiredReferralCount())
                     && !updatedReferrer.getHasReceivedReward()) {
 
-                log.info("Referrer {} now has {} valid referrals (required: {}), checking channel subscriptions",
-                        referrer.getUserChatId(), validReferrals, challenge.getRequiredReferralCount());
-
-                ReferralVerificationResult verification = verifyReferredUsersWithCounts(challenge,
-                        referrer.getUserChatId());
-
-                if (verification.activeReferrals >= challenge.getRequiredReferralCount()) {
-                    Thread.sleep(500);
-
-                    String inviteLink = inviteLinkService.createOneTimeInviteLink(
-                            botSupplier.get(), challenge.getId(), referrer.getUserChatId());
-
-                    if (inviteLink != null) {
-                        String linkMessage = messageService.createPrivateChannelMessage(
-                                inviteLink,
-                                challenge.getRequiredReferralCount());
-                        botUtils.sendMessage(botSupplier.get(), referrer.getUserChatId(), linkMessage);
-                        challengeUserService.markRewardSent(challenge.getId(), referrer.getUserChatId());
-
-                        log.info(
-                                "Automatically sent one-time private channel link to referrer {} after reaching {} referrals",
-                                referrer.getUserChatId(), validReferrals);
-                    } else {
-                        log.error("Failed to generate invite link for referrer {}", referrer.getUserChatId());
-                        botUtils.sendMessage(botSupplier.get(), referrer.getUserChatId(),
-                                "❌ Xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.");
-                    }
-                } else {
-                    log.warn("Referrer {} has only {} active referrals (required: {}, left channel: {})",
-                            referrer.getUserChatId(), verification.activeReferrals,
-                            challenge.getRequiredReferralCount(), verification.leftChannels);
-
-                    long referrerIndirectReferrals = challengeUserService.getIndirectReferralCount(
-                            challenge.getId(), referrer.getUserChatId());
-
-                    SendMessage insufficientMessage = messageService.createInsufficientActiveReferralsMessage(
-                            referrer.getUserChatId(),
-                            verification.totalReferrals,
-                            (int) referrerIndirectReferrals,
-                            verification.activeReferrals,
-                            verification.leftChannels,
-                            challenge.getRequiredReferralCount());
-                    botSupplier.get().execute(insufficientMessage);
-                }
+                // Use centralized logic to check and send reward
+                checkAndSendReward(challenge, referrer.getUserChatId());
             }
         } catch (TelegramApiException e) {
             log.error("Error sending referral success message", e);
-        } catch (InterruptedException e) {
-            log.error("Thread interrupted", e);
-            Thread.currentThread().interrupt();
         }
     }
 }
